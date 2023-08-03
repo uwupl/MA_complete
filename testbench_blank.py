@@ -1,7 +1,7 @@
 import numpy as np
 # import numba as nb
 from utils.utils import remove_uncomplete_runs, remove_test_dir
-from train_main import PatchCore, one_run_of_model
+from train_main_patchcore import PatchCore, one_run_of_model
 import pytorch_lightning as pl
 import os
 import torch

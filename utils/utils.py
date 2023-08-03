@@ -12,6 +12,7 @@ import warnings
 import time
 # import gc
 import shutil
+import math
 
 def cvt2heatmap(gray):
     heatmap = cv2.applyColorMap(np.uint8(gray), cv2.COLORMAP_JET)
@@ -133,6 +134,22 @@ def prep_dirs(root, category):
     source_code_save_path = os.path.join(root, 'src')
     os.makedirs(source_code_save_path, exist_ok=True)
     return embeddings_path, sample_path, source_code_save_path
+
+def calc_anomaly_map(score_patches, batch_size_1, load_size):
+        '''
+        calculates anomaly map based on score_patches
+        '''
+        if batch_size_1:
+            anomaly_map = score_patches[:,0].reshape((int(math.sqrt(len(score_patches[:,0]))),int(math.sqrt(len(score_patches[:,0])))))
+            a = int(load_size) # int, 64 
+            anomaly_map_resized = cv2.resize(anomaly_map, (a, a)) # [8,8] --> [64,64]
+            anomaly_map_resized_blur = gaussian_filter(anomaly_map_resized, sigma=4)# shape [8,8]
+        else:
+            anomaly_map = [score_patch[:,0].reshape((int(math.sqrt(len(score_patch[:,0]))),int(math.sqrt(len(score_patch[:,0]))))) for score_patch in score_patches]
+            a = int(load_size)
+            anomaly_map_resized = [cv2.resize(this_anomaly_map, (a, a)) for this_anomaly_map in anomaly_map]
+            anomaly_map_resized_blur = [gaussian_filter(this_anomaly_map_resized, sigma=4) for this_anomaly_map_resized in anomaly_map_resized]
+        return anomaly_map_resized_blur
 
 def get_summary_df(this_run_id: str, res_path: str, save_df = False):
     '''

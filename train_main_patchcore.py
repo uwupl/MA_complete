@@ -1,23 +1,23 @@
 
-import os
 from utils.backbone import Backbone, prune_naive, prune_model_nni, prune_output_layer, quantize_model, compress_model_nni
 from utils.feature_adaptor import get_feature_adaptor, FeatureAdaptor
 from utils.datasets import MVTecDataset
-from utils.utils import min_max_norm, heatmap_on_image, cvt2heatmap, record_gpu, modified_kNN_score_calc, prep_dirs #  distance_matrix, softmax
+from utils.utils import min_max_norm, heatmap_on_image, cvt2heatmap, record_gpu, modified_kNN_score_calc, calc_anomaly_map #  distance_matrix, softmax
 from utils.pooling import adaptive_pooling
 from utils.embedding import reshape_embedding, embedding_concat_frame
 from utils.search import KNN
 from utils.quantize import quantize_model_into_qint8
+from utils.kcenter_greedy import kCenterGreedy
+from path_definitions import ROOT_DIR, RES_DIR, PLOT_DIR, MVTEC_DIR, EMBEDDING_DIR
+
+import os
 import numpy as np
 import pandas as pd
 from PIL import Image
 import cv2
-
 from sklearn.random_projection import SparseRandomProjection
 from sklearn.metrics import roc_auc_score
-from sampling_methods.kcenter_greedy import kCenterGreedy
 import torch
-from torch.nn import functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
@@ -25,7 +25,6 @@ import faiss
 import pickle
 from sklearn.neighbors import NearestNeighbors
 import time
-import math
 from time import perf_counter as record_cpu
 from anomalib.models.components.sampling import k_center_greedy
 from torchinfo import summary
@@ -81,13 +80,12 @@ class PatchCore(pl.LightningModule):
         self.input_size = 224#args.input_size
         self.n_neighbors = 9#args.n_neighbors
         self.coreset_sampling_ratio = 0.01#args.coreset_sampling_ratio
-        self.dataset_path = r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD"#args.dataset_path
+        self.dataset_path = MVTEC_DIR#r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD"#args.dataset_path
         self.batch_size = 32#args.batch_size
         self.batch_size_test = 1 # not used until now, only for simplification of the code
         self.n_next_patches = 5
         self.faiss_standard = False # temp
         self.faiss_quantized = False
-        # self.faiss_quantized_
         self.own_knn = True
         self.adapted_score_calc = False
         self.coreset_sampling_method = 'k_center_greedy' # options: 'k_center_greedy', 'random_selection', 'sparse_projection'
@@ -149,37 +147,11 @@ class PatchCore(pl.LightningModule):
             16:'sokalsneath',
             # 18:'wminkowski',
             17:'mahalanobis',
-            18:'seuclidean',        # self.metrices = { 
-        #             0:'euclidean', # 0.88
-        #             1:'minkowski', # nur mit p spannend
-        #             2:'cityblock', # manhattan
-        #             3:'chebyshev',
-        #             4:'cosine',
-        #             5:'correlation',
-        #             6:'hamming',
-        #             7:'jaccard',
-        #             8:'braycurtis',
-        #             9:'canberra',
-        #             10:'jensenshannon',
-        #             # 11:'matching', # sysnonym for hamming
-        #             11:'dice',
-        #             12:'kulczynski1',
-        #             13:'rogerstanimoto',
-        #             14:'russellrao',
-        #             15:'sokalmichener',
-        #             16:'sokalsneath',
-        #             # 18:'wminkowski',
-        #             17:'mahalanobis',
-        #             18:'seuclidean',
-        #             19:'sqeuclidean',
-        #             }
-        # self.metrices_dict = {metric: i for i, metric in enumerate(metrices)}
+            18:'seuclidean',
             19:'sqeuclidean',
             }
         self.metric_id = 0
         self.metrics_p = None
-        # self.save_hyperparameters(args)
-        
         self.model_id = "WRN50"
         self.layers_needed = [2,3]#,3]#,3]#,3]
         self.layer_cut = True
@@ -289,13 +261,13 @@ class PatchCore(pl.LightningModule):
             os.makedirs(self.log_path)
         self.latences_filename = f'latences_{self.group_id}_{self.time_stamp}.csv'
         self.acc_filename = f'acc_{self.group_id}_{self.time_stamp}.csv'
-        self.embedding_dir_path, self.sample_path, self.source_code_save_path = prep_dirs(self.logger.log_dir, self.category)
-        
+        self.embedding_dir_path = os.path.join(EMBEDDING_DIR, self.category)
+        if not self.only_img_lvl:        #, self.sample_path, _ = prep_dirs(self.logger.log_dir, self.category)
+            self.sample_path = os.path.join(RES_DIR, 'samples', self.category)
         # change device to cuda if qint8 quantization is used
         if self.quantize_qint8: # get it to work with cuda --> not possible with pytorch quantization
             self.cuda_active_training, self.cuda_active = False, False
         
-        # get backbone
         # self.need_for_own_last_layer = self.need_for_own_last_layer # TODO #,self.prune_output_layer[0] # if relu is last activation, but we want to prune the output layer, we need to set this to true to get own last layer
         if self.cuda_active_training or self.cuda_active:
             self.model = Backbone(model_id=self.model_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, prune_output_layer=(False, []), prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, need_for_own_last_layer=self.need_for_own_last_layer, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).cuda().eval() #, prune_l1_norm=self.prune_l1_unstructured
@@ -365,8 +337,8 @@ class PatchCore(pl.LightningModule):
         
         # initialize paths
         self.latences_filename = f'latences_{self.group_id}_{self.time_stamp}.csv'
-        self.log_path = os.path.join(os.path.dirname(__file__), "results",f"{self.group_id}", "csv")
-        self.embedding_dir_path, self.sample_path, self.source_code_save_path = prep_dirs(self.logger.log_dir, self.category)
+        self.log_path = os.path.join(RES_DIR,f"{self.group_id}", "csv")
+        self.embedding_dir_path = os.path.join(EMBEDDING_DIR, self.category)
         if not os.path.exists(self.log_path):
             os.makedirs(self.log_path)
 
@@ -869,7 +841,7 @@ class PatchCore(pl.LightningModule):
                 score_patches = self.calc_score_patches(embeddings=embeddings, batch_size_1=batch_size_1)
                 score = self.calc_img_score(score_patches=score_patches)
                 if not self.only_img_lvl:
-                    anomaly_map = self.calc_anomaly_map(score_patches=score_patches, batch_size_1=batch_size_1)
+                    anomaly_map = calc_anomaly_map(score_patches=score_patches, batch_size_1=batch_size_1, load_size=self.load_size)
                 else:
                     anomaly_map = None
             else:
@@ -952,7 +924,7 @@ class PatchCore(pl.LightningModule):
             
             if not self.only_img_lvl:
                 if not self.multiple_coresets[0] or self.coreset_sampling_ratio == 1.0:
-                    anomaly_map = self.calc_anomaly_map(score_patches=score_patches, batch_size_1=batch_size_1)
+                    anomaly_map = self.calc_anomaly_map(score_patches=score_patches, batch_size_1=batch_size_1, load_size=self.load_size)
                 else:
                     raise NotImplementedError('multiple coresets not implemented for pixel wise anomaly map')
             else:
@@ -1016,7 +988,6 @@ class PatchCore(pl.LightningModule):
         if self.weight_by_entropy:
             flattened_features = np.multiply(flattened_features, self.weights)
             
-        ### temp
         if self.adapt_feature and self.feature_adaptor is not None:
             torch_features = torch.from_numpy(flattened_features).to(device='cuda:0' if self.cuda_active and torch.cuda.is_available() else 'cpu')
             flattened_features = self.feature_adaptor(torch_features).detach().cpu().numpy()
@@ -1076,22 +1047,6 @@ class PatchCore(pl.LightningModule):
             w = (1 - (np.max(np.exp(N_b))/np.sum(np.exp(N_b))))
             score = w*max(score_patches[:,0]) # Image-level score #TODO --> meaning of numbers
         return score
-    
-    def calc_anomaly_map(self, score_patches, batch_size_1):
-        '''
-        calculates anomaly map based on score_patches
-        '''
-        if batch_size_1:
-            anomaly_map = score_patches[:,0].reshape((int(math.sqrt(len(score_patches[:,0]))),int(math.sqrt(len(score_patches[:,0])))))
-            a = int(self.load_size) # int, 64 
-            anomaly_map_resized = cv2.resize(anomaly_map, (a, a)) # [8,8] --> [64,64]
-            anomaly_map_resized_blur = gaussian_filter(anomaly_map_resized, sigma=4)# shape [8,8]
-        else:
-            anomaly_map = [score_patch[:,0].reshape((int(math.sqrt(len(score_patch[:,0]))),int(math.sqrt(len(score_patch[:,0]))))) for score_patch in score_patches]
-            a = int(self.load_size)
-            anomaly_map_resized = [cv2.resize(this_anomaly_map, (a, a)) for this_anomaly_map in anomaly_map]
-            anomaly_map_resized_blur = [gaussian_filter(this_anomaly_map_resized, sigma=4) for this_anomaly_map_resized in anomaly_map_resized]
-        return anomaly_map_resized_blur
     
     def eval_one_step_test(self, score_patches, score, anomaly_map, x, gt, label, file_name, x_type):
         '''
