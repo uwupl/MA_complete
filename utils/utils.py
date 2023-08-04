@@ -13,6 +13,7 @@ import time
 # import gc
 import shutil
 import math
+from path_definitions import PLOT_DIR, RES_DIR, ROOT_DIR
 
 def cvt2heatmap(gray):
     heatmap = cv2.applyColorMap(np.uint8(gray), cv2.COLORMAP_JET)
@@ -135,22 +136,6 @@ def prep_dirs(root, category):
     os.makedirs(source_code_save_path, exist_ok=True)
     return embeddings_path, sample_path, source_code_save_path
 
-def calc_anomaly_map(score_patches, batch_size_1, load_size):
-        '''
-        calculates anomaly map based on score_patches
-        '''
-        if batch_size_1:
-            anomaly_map = score_patches[:,0].reshape((int(math.sqrt(len(score_patches[:,0]))),int(math.sqrt(len(score_patches[:,0])))))
-            a = int(load_size) # int, 64 
-            anomaly_map_resized = cv2.resize(anomaly_map, (a, a)) # [8,8] --> [64,64]
-            anomaly_map_resized_blur = gaussian_filter(anomaly_map_resized, sigma=4)# shape [8,8]
-        else:
-            anomaly_map = [score_patch[:,0].reshape((int(math.sqrt(len(score_patch[:,0]))),int(math.sqrt(len(score_patch[:,0]))))) for score_patch in score_patches]
-            a = int(load_size)
-            anomaly_map_resized = [cv2.resize(this_anomaly_map, (a, a)) for this_anomaly_map in anomaly_map]
-            anomaly_map_resized_blur = [gaussian_filter(this_anomaly_map_resized, sigma=4) for this_anomaly_map_resized in anomaly_map_resized]
-        return anomaly_map_resized_blur
-
 def get_summary_df(this_run_id: str, res_path: str, save_df = False):
     '''
     Takes a run_id, reads all files and returns a dataframe with the summary of all runs
@@ -243,7 +228,7 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
         run_summary_df.to_csv(file_path, index=False)
     return run_summary_df
 
-def plot_results(labels, feature_extraction, embedding, search, calc_scores, own_auc, MVTechAD_auc, storage, fig_size = (20,10), title = 'Comparison', only_auc = False, width = 0.4, save_fig = False, res_path = r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_PatchCore/results/plots/', show = True):
+def plot_results(labels, feature_extraction, embedding, search, calc_scores, own_auc, MVTechAD_auc, storage, fig_size = (20,10), title = 'Comparison', only_auc = False, width = 0.4, save_fig = False, res_path = PLOT_DIR, show = True):
     '''
     visualizes results in bar chart
     '''
@@ -349,7 +334,7 @@ def remove_all_empty_run_dirs():
     removes all empty run dirs
     '''
     counter = 0
-    dir_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
+    dir_path =RES_DIR# os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
     for folder in os.listdir(dir_path):
         if os.path.isdir(os.path.join(dir_path, folder, 'csv')):
             if len(os.listdir(os.path.join(dir_path, folder, 'csv'))) == 0:
@@ -358,12 +343,12 @@ def remove_all_empty_run_dirs():
     print(f'Removed {counter} empty folders')
     return None
 
-def remove_uncomplete_runs(main_dir = r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_PatchCore/'):
+def remove_uncomplete_runs(dir_path = RES_DIR):#r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_PatchCore/'):
     '''
     checks if all csv files are complete and removes uncomplete runs
     '''
     counter = 0
-    dir_path = os.path.join(main_dir, 'results')
+    # dir_path = os.path.join(main_dir, 'results')
     for folder in os.listdir(dir_path):
         if os.path.isdir(os.path.join(dir_path, folder, 'csv')):
             if len(os.listdir(os.path.join(dir_path, folder, 'csv'))) == 0:
@@ -455,11 +440,11 @@ def remove_test_dir():
     '''
     removes test dir if it is bigger than 5GB
     '''
-    if get_dir_size(os.path.join(os.getcwd(), 'test'))/(1024*1024*1024) > 5:
+    if get_dir_size(os.path.join(ROOT_DIR, 'test'))/(1024*1024*1024) > 5:
         print('delete')
         # os.remove(os.path.join(os.getcwd(), 'test', 'test.txt'))
         try:
-            shutil.rmtree(os.path.join(os.getcwd(), 'test'))
+            shutil.rmtree(os.path.join(ROOT_DIR, 'test'))
             print('deleted')
         except:
             print('could not delete')  
@@ -481,3 +466,22 @@ def softmax(x):
     """Compute softmax values for each sets of scores in x."""
     e_x = np.exp(x - np.max(x))
     return np.divide(e_x, np.sum(e_x)) 
+
+
+# not used
+def calc_anomaly_map(score_patches, batch_size_1, load_size):
+        '''
+        calculates anomaly map based on score_patches
+        '''
+        if batch_size_1:
+            anomaly_map = score_patches[:,0].reshape((int(math.sqrt(len(score_patches[:,0]))),int(math.sqrt(len(score_patches[:,0])))))
+            a = int(load_size) # int, 64 
+            anomaly_map_resized = cv2.resize(anomaly_map, (a, a)) # [8,8] --> [64,64]
+            anomaly_map_resized_blur = gaussian_filter(anomaly_map_resized, sigma=4)# shape [8,8]
+        else:
+            anomaly_map = [score_patch[:,0].reshape((int(math.sqrt(len(score_patch[:,0]))),int(math.sqrt(len(score_patch[:,0]))))) for score_patch in score_patches]
+            a = int(load_size)
+            anomaly_map_resized = [cv2.resize(this_anomaly_map, (a, a)) for this_anomaly_map in anomaly_map]
+            anomaly_map_resized_blur = [gaussian_filter(this_anomaly_map_resized, sigma=4) for this_anomaly_map_resized in anomaly_map_resized]
+        return anomaly_map_resized_blur
+

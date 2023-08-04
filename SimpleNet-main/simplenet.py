@@ -479,7 +479,7 @@ class SimpleNet(torch.nn.Module):
                     else:
                         true_feats = self._embed(img, evaluation=False)[0]
                     
-                    noise_idxs = torch.randint(0, self.mix_noise, torch.Size([true_feats.shape[0]]))
+                    noise_idxs = torch.randint(0, self.mix_noise, torch.Size([true_feats.shape[0]])) # matrix (N, ) with zeros
                     noise_one_hot = torch.nn.functional.one_hot(noise_idxs, num_classes=self.mix_noise).to(self.device) # (N, K)
                     noise = torch.stack([
                         torch.normal(0, self.noise_std * 1.1**(k), true_feats.shape)
