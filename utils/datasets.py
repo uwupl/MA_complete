@@ -128,7 +128,7 @@ class Own_Imagenet(Dataset):
     def get_unzipped_image(self, idx):
         # def load_image_from_zip(zip_path, image_name):
         with zipfile.ZipFile(os.path.join(self.root_location, 'calibration_set.zip')) as z:
-            with z.open(os.path.join('val', self.file_names[idx])) as file:
+            with z.open(os.path.join('calibration_set', self.file_names[idx])) as file:
                 img_bytes = file.read()
                 image = Image.open(io.BytesIO(img_bytes)).convert('RGB')
         return image
