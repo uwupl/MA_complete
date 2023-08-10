@@ -25,8 +25,11 @@ class MVTecDataset(Dataset):
         if phase=='train':
             self.img_path = os.path.join(root, 'train')
         else:
-            self.img_path = os.path.join(root, 'test')
-            self.gt_path = os.path.join(root, 'ground_truth')
+            root_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            zip_path = os.path.join(root_folder, 'MVTechAD_test.zip')
+            
+            # self.img_path = os.path.join(root, 'test')
+            # self.gt_path = os.path.join(root, 'ground_truth')
         self.transform = transform
         self.gt_transform = gt_transform
         # load dataset

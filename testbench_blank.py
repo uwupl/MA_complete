@@ -27,13 +27,13 @@ if __name__ == '__main__':
     model.n_next_patches = 16
     model.layer_cut = True
     model.layers_needed = [2,3]
-    run_id_prefix = ''
+    run_id_prefix = 'Calib_Comp'
     
     
     # default run
     manager.this_run_id = run_id_prefix 
-    model.model_id = run_id_prefix + 'RN18_fp32-default'
-    manager.run(model, only_accuracy=True)
+    model.group_id = run_id_prefix + 'RN18_fp32-default'
+    # manager.run(model, only_accuracy=True)
     
     
     ##############################
@@ -42,23 +42,23 @@ if __name__ == '__main__':
     
     model.quantize_qint8 = True
     model.calibration_dataset = 'imagenet'
-    model.model_id = run_id_prefix + 'RN18_qint8-calib_imagenet'
+    model.group_id = run_id_prefix + 'RN18_qint8-calib_imagenet'
     manager.run(model, only_accuracy=True)
     
     model.calibration_dataset = 'target'
-    model.model_id = run_id_prefix + 'RN18_qint8-calib_target'
+    model.group_id = run_id_prefix + 'RN18_qint8-calib_target'
     manager.run(model, only_accuracy=True)
     
     model.calibration_dataset = 'mvtec'
-    model.model_id = run_id_prefix + 'RN18_qint8-calib_mvtec'
+    model.group_id = run_id_prefix + 'RN18_qint8-calib_mvtec'
     manager.run(model, only_accuracy=True)
     
     model.calibration_dataset = 'random'
-    model.metric_id = run_id_prefix + 'RN18_qint8-calib_random'
+    model.group_id = run_id_prefix + 'RN18_qint8-calib_random'
     manager.run(model, only_accuracy=True)
     
     model.calibration_dataset = None
-    model.metric_id = run_id_prefix + 'RN18_qint8-calib_none'
+    model.group_id = run_id_prefix + 'RN18_qint8-calib_none'
     manager.run(model, only_accuracy=True)    
     
     print(manager.get_summarization())
