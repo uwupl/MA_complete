@@ -18,7 +18,7 @@ class DatasetSplit(Enum):
     TEST = "test"
 
 
-class SDDDataset(torch.utils.data.Dataset):
+class SDD2Dataset(torch.utils.data.Dataset):
     """
     PyTorch Dataset for MVTec.
     """
@@ -60,7 +60,6 @@ class SDDDataset(torch.utils.data.Dataset):
         super().__init__()
         self.source = source
         self.split = split
-        self.split_id = int(classname)
         self.train_val_split = train_val_split
 
         self.data_to_iterate = self.get_image_data()
@@ -96,12 +95,12 @@ class SDDDataset(torch.utils.data.Dataset):
         #         self.__getitem__(i)
 
     def __getitem__(self, idx):
-        data = self.data_to_iterate[idx]
-        image = PIL.Image.open(data["img"]).convert("RGB")
+        img_path, gt_path, is_anomaly = self.data_to_iterate[idx]
+        image = PIL.Image.open(img_path).convert("RGB")
         image = self.transform_img(image)
 
-        if self.split == DatasetSplit.TEST and data["anomaly"] == 1:
-            mask = PIL.Image.open(data["label"])
+        if self.split == DatasetSplit.TEST and is_anomaly:
+            mask = PIL.Image.open(gt_path)
             mask = self.transform_mask(mask)
         else:
             mask = torch.zeros([1, *image.size()[1:]])
@@ -109,10 +108,10 @@ class SDDDataset(torch.utils.data.Dataset):
         return {
             "image": image,
             "mask": mask,
-            "classname": str(self.split_id),
-            "anomaly": data["anomaly"],
-            "is_anomaly": data["anomaly"],
-            "image_path": data["img"],
+            "classname": "",
+            "anomaly": is_anomaly,
+            "is_anomaly": is_anomaly,
+            "image_path": img_path,
         }
 
     def __len__(self):
@@ -121,33 +120,25 @@ class SDDDataset(torch.utils.data.Dataset):
     def get_image_data(self):
 
         data_ids = []
-        with open(os.path.join(self.source, "KolektorSDD-training-splits", "split.pyb"), "rb") as f:
-            train_ids, test_ids, _ = pickle.load(f)
-            if self.split == DatasetSplit.TRAIN:
-                data_ids = train_ids[self.split_id]
-            else:
-                data_ids = test_ids[self.split_id]
         
-        data = {}
-        for data_id in data_ids:
-            item_dir = os.path.join(self.source, data_id)
-            fns = os.listdir(item_dir)
-            part_ids = [os.path.splitext(fn)[0] for fn in fns if fn.endswith("jpg")]
-            parts = {part_id:{"img":"", "label":"", "anomaly":0}
-                     for part_id in part_ids}
-            for part_id in parts:
-                for fn in fns:
-                    if part_id in fn:
-                        if "label" in fn:
-                            label = cv2.imread(os.path.join(item_dir, fn))
-                            if label.sum() > 0:
-                                parts[part_id]["anomaly"] = 1
-                            parts[part_id]["label"] = os.path.join(item_dir, fn)
-                        else:
-                            parts[part_id]["img"] = os.path.join(item_dir, fn)
-            for k, v in parts.items():
-                if self.split == DatasetSplit.TRAIN and v["anomaly"] == 1:
+        data_dir = os.path.join(self.source, "train" if self.split == DatasetSplit.TRAIN else "test")
+        data = []
+        test = [0, 0]
+        for fn in os.listdir(data_dir):
+            if "GT" not in fn:
+                data_id = os.path.splitext(fn)[0]
+                img_path = os.path.join(data_dir, fn)
+                gt_path = os.path.join(data_dir, f"{data_id}_GT.png")
+                assert os.path.exists(img_path)
+                assert os.path.exists(gt_path), gt_path
+                gt = cv2.imread(gt_path)
+                is_anomaly = gt.sum() > 0
+                if is_anomaly:
+                    test[1] = test[1] + 1
+                else:
+                    test[0] = test[0] + 1
+                if self.split == DatasetSplit.TRAIN and is_anomaly:
                     continue
-                data[data_id + '_' + k] = v
+                data.append([img_path, gt_path, gt.sum() > 0])
 
-        return list(data.values())
+        return data

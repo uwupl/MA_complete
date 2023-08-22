@@ -17,11 +17,12 @@ import torch.nn.functional as F
 import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
-import common
-import metrics
+import utils.common as common
+import utils.metrics as metrics
+from utils.backbone import Backbone
+from utils.embedding import _embed, PatchMaker
 
-
-import sys
+# import sys
 import os
  
 # getting the name of the directory
@@ -34,8 +35,8 @@ import os
  
 # # adding the parent directory to
 # # the sys.path.
-sys.path.append(r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/utils')
-import ..utils.backbone# import backbone
+# sys.path.append(r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/utils')
+# import ..utils.backbone# import backbone
 
 LOGGER = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ class SimpleNet(torch.nn.Module):
 
     def load(
         self,
-        backbone_id,
+        backbone_id, 
         layers_to_extract_from,
         device,
         input_shape,
@@ -190,7 +191,7 @@ class SimpleNet(torch.nn.Module):
 
         self.embedding_size = embedding_size if embedding_size is not None else self.target_embed_dimension
         self.meta_epochs = meta_epochs
-        self.lr = lr
+        # self.lr = lr
         self.cos_lr = cos_lr
         self.train_backbone = train_backbone
         if self.train_backbone:
@@ -200,7 +201,7 @@ class SimpleNet(torch.nn.Module):
 
         self.pre_proj = pre_proj
         if self.pre_proj > 0: # not used in the paper
-            self.pre_projection = Projection(self.target_embed_dimension, self.target_embed_dimension, pre_proj, proj_layer_type)
+            self.pre_projection = Projection(self.target_embed_dimension, self.target_embed_dimension, pre_proj,  proj_layer_type)
             self.pre_projection.to(self.device)
             self.proj_opt = torch.optim.AdamW(self.pre_projection.parameters(), lr*.1)
 
@@ -223,7 +224,7 @@ class SimpleNet(torch.nn.Module):
         self.logger = None
 
     def set_model_dir(self, model_dir, dataset_name):
-
+        print("model_dir: ",self.model_dir)
         self.model_dir = model_dir 
         os.makedirs(self.model_dir, exist_ok=True)
         self.ckpt_dir = os.path.join(self.model_dir, dataset_name)
@@ -241,40 +242,9 @@ class SimpleNet(torch.nn.Module):
                     image = image["image"]
                     input_image = image.to(torch.float).to(self.device)
                 with torch.no_grad():
-                    features.append(self._embed(input_image))
+                    features.append(_embed(input_image, self.forward_modules, self.patch_maker))
             return features
-        return self._embed(data)
-
-    def _embed(images, forward_modules, provide_patch_shapes=False):#, evaluation=False):
-        """Returns feature embeddings for images."""
-
-        # if not evaluation and self.train_backbone:
-        #     self.forward_modules["feature_aggregator"].train()
-        #     features = self.forward_modules["feature_aggregator"](images, eval=evaluation)
-        # else:
-        forward_modules["feature_aggregator"].eval()
-        with torch.no_grad():
-            features = forward_modules["feature_aggregator"](images) # type dict
-
-        # features = [features[layer] for layer in self.layers_to_extract_from] # list of tensors like usual: WRN50 L2: (1, 512, 28, 28), L3: (1, 1024, 14, 14), L4: (1, 2048, 7, 7)
-        
-        # apply patchify
-        features = [
-            self.patch_maker.patchify(x, return_spatial_info=True) for x in features
-        ] 
-        
-        # interpolate
-        features, patch_shapes = interpolate_bilinear_after_patchify(features=features)
-        
-        # As different feature backbones & patching provide differently
-        # sized features, these are brought into the correct form here.
-        features = self.forward_modules["preprocessing"](features) # pooling each feature to same channel and stack together; torch.Size([784, 2, 1536])
-        features = self.forward_modules["preadapt_aggregator"](features) # further pooling; torch.Size([784, 1536]) --> same shape as the patchcore method
-
-        if provide_patch_shapes:
-            return features, patch_shapes
-        return features
-
+        return _embed(data, self.forward_modules, self.patch_maker)
     
     def test(self, training_data, test_data): # not working!
         
@@ -472,19 +442,23 @@ class SimpleNet(torch.nn.Module):
                     img = data_item["image"]
                     img = img.to(torch.float).to(self.device)
                     if self.pre_proj > 0:
-                        true_feats = self.pre_projection(self._embed(img, evaluation=False)[0])
+                        true_feats = self.pre_projection(_embed(img, self.forward_modules, self.patch_maker))
                     else:
-                        true_feats = self._embed(img, evaluation=False)[0]
-                    
-                    noise_idxs = torch.randint(0, self.mix_noise, torch.Size([true_feats.shape[0]])) # matrix (N, ) with zeros
+                        true_feats = _embed(img, self.forward_modules, self.patch_maker)
+                    # print('feat', true_feats.shape)
+                    noise_idxs = torch.randint(0, self.mix_noise, torch.Size([true_feats.shape[0]]))
+                    # print('noise_idxs', noise_idxs.shape)
                     noise_one_hot = torch.nn.functional.one_hot(noise_idxs, num_classes=self.mix_noise).to(self.device) # (N, K)
+                    # print('noise_one_hot', noise_one_hot.shape)
                     noise = torch.stack([
                         torch.normal(0, self.noise_std * 1.1**(k), true_feats.shape)
                         for k in range(self.mix_noise)], dim=1).to(self.device) # (N, K, C)
                     noise = (noise * noise_one_hot.unsqueeze(-1)).sum(1)
+                    # print('noise', noise.shape)
                     fake_feats = true_feats + noise
-
-                    scores = self.discriminator(torch.cat([true_feats, fake_feats]))
+                    # print('fake_feats', fake_feats.shape)
+                    combined_features = torch.cat([true_feats, fake_feats])
+                    scores = self.discriminator(combined_features)
                     true_scores = scores[:len(true_feats)]
                     fake_scores = scores[len(fake_feats):]
                     
@@ -575,27 +549,35 @@ class SimpleNet(torch.nn.Module):
             self.pre_projection.eval()
         self.discriminator.eval()
         with torch.no_grad():
-            features, patch_shapes = self._embed(images,
-                                                 provide_patch_shapes=True, 
-                                                 evaluation=True)
+            features, patch_shapes = _embed(images,
+                                            self.forward_modules,
+                                            self.patch_maker,
+                                            provide_patch_shapes=True)#, 
+                                                 #evaluation=True)
             if self.pre_proj > 0:
                 features = self.pre_projection(features)
 
             # features = features.cpu().numpy()
             # features = np.ascontiguousarray(features.cpu().numpy())
+            print('Features shape: ', features.shape)
             patch_scores = image_scores = -self.discriminator(features)
+            print('Patch scores shape: ', patch_scores.shape)
+            print('Image scores shape: ', image_scores.shape)
             patch_scores = patch_scores.cpu().numpy()
             image_scores = image_scores.cpu().numpy()
 
             image_scores = self.patch_maker.unpatch_scores(
                 image_scores, batchsize=batchsize
             )
+            print('Image scores shape: ', image_scores.shape)
             image_scores = image_scores.reshape(*image_scores.shape[:2], -1)
+            print('Image scores shape: ', image_scores.shape)
             image_scores = self.patch_maker.score(image_scores)
-
+            print('Image scores shape: ', image_scores.shape)
             patch_scores = self.patch_maker.unpatch_scores(
                 patch_scores, batchsize=batchsize
             )
+            print('Patch scores shape: ', patch_scores.shape)
             scales = patch_shapes[0]
             patch_scores = patch_scores.reshape(batchsize, scales[0], scales[1])
             features = features.reshape(batchsize, scales[0], scales[1], -1)
@@ -630,98 +612,5 @@ class SimpleNet(torch.nn.Module):
             pickle.dump(params, save_file, pickle.HIGHEST_PROTOCOL)
 
 
-# Image handling classes.
-class PatchMaker:
-    def __init__(self, patchsize, top_k=0, stride=None):
-        self.patchsize = patchsize
-        self.stride = stride
-        self.top_k = top_k
-
-    def patchify(self, features, return_spatial_info=False):
-        """Convert a tensor into a tensor of respective patches.
-        Args:
-            x: [torch.Tensor, bs x c x w x h]
-        Returns:
-            x: [torch.Tensor, bs * w//stride * h//stride, c, patchsize,
-            patchsize]
-        """
-        padding = int((self.patchsize - 1) / 2)
-        unfolder = torch.nn.Unfold(
-            kernel_size=self.patchsize, stride=self.stride, padding=padding, dilation=1
-        )
-        unfolded_features = unfolder(features)
-        number_of_total_patches = []
-        for s in features.shape[-2:]:
-            n_patches = (
-                s + 2 * padding - 1 * (self.patchsize - 1) - 1
-            ) / self.stride + 1
-            number_of_total_patches.append(int(n_patches))
-        unfolded_features = unfolded_features.reshape(
-            *features.shape[:2], self.patchsize, self.patchsize, -1
-        )
-        unfolded_features = unfolded_features.permute(0, 4, 1, 2, 3)
-
-        if return_spatial_info:
-            return unfolded_features, number_of_total_patches
-        return unfolded_features
-
-    def unpatch_scores(self, x, batchsize):
-        return x.reshape(batchsize, -1, *x.shape[1:])
-
-    def score(self, x):
-        was_numpy = False
-        if isinstance(x, np.ndarray):
-            was_numpy = True
-            x = torch.from_numpy(x)
-        while x.ndim > 2:
-            x = torch.max(x, dim=-1).values
-        if x.ndim == 2:
-            if self.top_k > 1:
-                x = torch.topk(x, self.top_k, dim=1).values.mean(1)
-            else:
-                x = torch.max(x, dim=1).values
-        if was_numpy:
-            return x.numpy()
-        return x
 
 
-### helper functions
-def interpolate_bilinear_after_patchify(features):
-        """Interpolates features to the same size.
-        Upsamples all feature maps to the size of the largest feature map.
-        Uses bilinear interpolation.
-        
-        Input: list of tuples. One tuple for each layer. Each tuple contains the features and the patch shape of the layer. Features itself have shape (1, C, W, H)
-        """
-        patch_shapes = [x[1] for x in features]
-        features = [x[0] for x in features]
-        ref_num_patches = patch_shapes[0] # size of the larger grid, e.g. L2: 28x28; this will later be taken to upsample features from Layers deeper in the net
-
-        for i in range(1, len(features)):
-            _features = features[i]
-            patch_dims = patch_shapes[i]
-
-            # TODO(pgehler): Add comments
-            _features = _features.reshape(
-                _features.shape[0], patch_dims[0], patch_dims[1], *_features.shape[2:] #torch.Size([1, 14, 14, 1024, 3, 3])
-            ) # shape: (1, 14, 14, 1024, 3, 3)
-            _features = _features.permute(0, -3, -2, -1, 1, 2) # torch.Size([1, 1024, 3, 3, 14, 14])
-            perm_base_shape = _features.shape
-            _features = _features.reshape(-1, *_features.shape[-2:]) #([9216, 14, 14])
-            _features = F.interpolate(
-                _features.unsqueeze(1), # torch.Size([9216, 1, 14, 14]) 9126 = 1024 * 3 * 3 --> Why?
-                
-                size=(ref_num_patches[0], ref_num_patches[1]),
-                mode="bilinear",
-                align_corners=False,
-            )
-            _features = _features.squeeze(1) # torch.Size([9216, 28, 28])
-            _features = _features.reshape(
-                *perm_base_shape[:-2], ref_num_patches[0], ref_num_patches[1]
-            ) # torch.Size([1, 1024, 3, 3, 28, 28]) --> back in patches again
-            _features = _features.permute(0, -2, -1, 1, 2, 3)
-            _features = _features.reshape(len(_features), -1, *_features.shape[-3:])
-            features[i] = _features
-        features = [x.reshape(-1, *x.shape[-3:]) for x in features]
-        
-        return features, patch_shapes

@@ -13,11 +13,12 @@ import numpy as np
 import torch
 
 sys.path.append("src")
-import backbones
-import common
-import metrics
-import simplenet 
-import utils
+# import utils.backbones as backbones
+from utils.backbone import Backbone
+import utils.common as common
+import utils.metrics as metrics 
+import utils.simplenet as simplenet
+import utils.utils as utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,15 +33,15 @@ _DATASETS = {
 @click.option("--seed", type=int, default=0, show_default=True)
 @click.option("--log_group", type=str, default="group")
 @click.option("--log_project", type=str, default="project")
-@click.option("--run_name", type=str, default="test")
+@click.option("--run_name", type=str, default="1508")
 @click.option("--test", is_flag=True)
 def main(**kwargs):
     pass
 
 
-@main.result_callback()
+@main.result_callback() # In Python, a callback function is a function that's passed as an argument to another function and gets executed after a specific event or some tasks are completed.
 def run(
-    methods,
+    methods, # probably a list of tuples; get_dataloaders, get_simplenet; Combinations are possible!
     results_path,
     gpu,
     seed,
@@ -75,14 +76,15 @@ def run(
         dataset_name = dataloaders["training"].name
 
         imagesize = dataloaders["training"].dataset.imagesize
+        print("imagesize: ", imagesize)
         simplenet_list = methods["get_simplenet"](imagesize, device)
 
         models_dir = os.path.join(run_save_path, "models")
         os.makedirs(models_dir, exist_ok=True)
         for i, SimpleNet in enumerate(simplenet_list):
             # torch.cuda.empty_cache()
-            if SimpleNet.backbone.seed is not None:
-                utils.fix_seeds(SimpleNet.backbone.seed, device)
+            # if SimpleNet.backbone.seed is not None:
+            #     utils.fix_seeds(SimpleNet.backbone.seed, device)
             LOGGER.info(
                 "Training models ({}/{})".format(i + 1, len(simplenet_list))
             )
@@ -166,6 +168,7 @@ def net(
     mix_noise,
 ):
     backbone_names = list(backbone_names)
+    layers_to_extract_from = [int(x) for x in layers_to_extract_from] # convert from string to int
     if len(backbone_names) > 1:
         layers_to_extract_from_coll = [[] for _ in range(len(backbone_names))]
         for layer in layers_to_extract_from:
@@ -185,12 +188,14 @@ def net(
                 backbone_name, backbone_seed = backbone_name.split(".seed-")[0], int(
                     backbone_name.split("-")[-1]
                 )
-            backbone = backbones.load(backbone_name)
-            backbone.name, backbone.seed = backbone_name, backbone_seed
-
+            # backbone = backbones.load(backbone_name)
+            # backbone.name, backbone.seed = backbone_name, backbone_seed
+            print(layers_to_extract_from)
+            # backbone = Backbone(model_id=backbone_names[0], layers_needed=layers_to_extract_from, layer_cut=True)
+            
             simplenet_inst = simplenet.SimpleNet(device)
             simplenet_inst.load(
-                backbone=backbone,
+                backbone_id=backbone_names,
                 layers_to_extract_from=layers_to_extract_from,
                 device=device,
                 input_shape=input_shape,
@@ -257,8 +262,11 @@ def dataset(
     hflip,
     vflip,
     augment,
-):
+):  
+    
     dataset_info = _DATASETS[name]
+    print("dataset_info: ", dataset_info)
+    print('name: ', name)#')
     dataset_library = __import__(dataset_info[0], fromlist=[dataset_info[1]])
 
     def get_dataloaders(seed):
@@ -340,7 +348,7 @@ def dataset(
                 val_dataloader = None
             dataloader_dict = {
                 "training": train_dataloader,
-                "validation": val_dataloader,
+                "validation": val_dataloader, 
                 "testing": test_dataloader,
             }
 

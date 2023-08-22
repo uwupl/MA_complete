@@ -51,6 +51,11 @@ class Backbone(nn.Module):
         if self.hooks_needed:
             self.init_features()
         
+        if self.model_id.__contains__('WRN'):
+            self.feature_dim = [int(128*(2**this_layer)) for this_layer in layers_needed]
+        else:
+            self.feature_dim = [int(32*(2**this_layer)) for this_layer in layers_needed]
+        
         if self.quantize_qint8_prepared:
             if self.model_id.__contains__('WRN50'):
                 weights = Wide_ResNet50_2_Weights.DEFAULT

@@ -2,7 +2,7 @@ datapath=/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/
 datasets=('screw' 'pill' 'capsule' 'carpet' 'grid' 'tile' 'wood' 'zipper' 'cable' 'toothbrush' 'transistor' 'metal_nut' 'bottle' 'hazelnut' 'leather')
 dataset_flags=($(for dataset in "${datasets[@]}"; do echo '-d '"${dataset}"; done))
 
-python main.py \
+/home/jo/micromamba/envs/cuda_torch/bin/python main_simplenet.py \
 --gpu 0 \
 --seed 0 \
 --log_group simplenet_mvtec \
@@ -10,13 +10,13 @@ python main.py \
 --results_path results \
 --run_name run \
 net \
--b wideresnet50 \
--le layer2 \
--le layer3 \
+-b WRN50 \
+-le 2 \
+-le 3 \
 --pretrain_embed_dimension 1536 \
 --target_embed_dimension 1536 \
 --patchsize 3 \
---meta_epochs 40 \ 
+--meta_epochs 40 \
 --embedding_size 256 \
 --gan_epochs 4 \
 --noise_std 0.015 \
@@ -26,7 +26,6 @@ net \
 --pre_proj 1 \
 dataset \
 --batch_size 8 \
---resize 256
-# --resize 329 \ 
+--resize 256 \
 --imagesize 224 "${dataset_flags[@]}" mvtec $datapath
 # --imagesize 288 "${dataset_flags[@]}" mvtec $datapath

@@ -76,7 +76,7 @@ class PatchCore(pl.LightningModule):
         
         # options
         self.category = 'own'#args.category
-        self.load_size = 224#args.load_size
+        self.load_size = 256#args.load_size
         self.input_size = 224#args.input_size
         self.n_neighbors = 9#args.n_neighbors
         self.coreset_sampling_ratio = 0.01#args.coreset_sampling_ratio
@@ -163,7 +163,7 @@ class PatchCore(pl.LightningModule):
         self.exclude_relu = False
         self.sigmoid_in_last_layer = False
         self.need_for_own_last_layer = False
-        self.category_wise_statistics = True
+        self.category_wise_statistics = False
         if self.category_wise_statistics:
             filename = 'statistics.json'
             with open(filename, "rb") as file:
@@ -198,7 +198,7 @@ class PatchCore(pl.LightningModule):
         self.pred_list_px_lvl = []
         self.gt_list_img_lvl = []
         self.pred_list_img_lvl = []
-        self.img_path_list = []        
+        self.img_path_list = []
 
     def init_features(self):
         self.features = []
@@ -1033,6 +1033,7 @@ class PatchCore(pl.LightningModule):
         '''
         calculates the image score based on score_patches
         '''
+        print('score_patches: ', score_patches.shape)
         if self.adapted_score_calc:
             score = modified_kNN_score_calc(score_patches=score_patches.astype(np.float64), n_next_patches=self.n_next_patches)
         else:
@@ -1209,7 +1210,7 @@ if __name__ == '__main__':
     # model.category = 'pill'
     model.save_embeddings = False
     model.metric_id = 0
-    model.adapt_feature = True
+    model.adapt_feature = False
     model.multiple_coresets = [True, 10]
     # model.metric_id = 4 # cosine
     # model.metric_id = 2 # manhattan / L1

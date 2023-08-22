@@ -72,3 +72,135 @@ def reshape_embedding(embedding):
                 out[counter, :] = embedding[k, :, i, j]
                 counter += 1
     return out
+
+
+
+def _embed(images, forward_modules, patch_maker, provide_patch_shapes=False):#, evaluation=False):
+    """Returns feature embeddings for images."""
+
+    # if not evaluation and self.train_backbone:
+    #     self.forward_modules["feature_aggregator"].train()
+    #     features = self.forward_modules["feature_aggregator"](images, eval=evaluation)
+    # else:
+    forward_modules["backbone"].eval() #forward_modules["feature_aggregator"] = 
+    with torch.no_grad():
+        features = forward_modules["backbone"](images) # type dict
+        # print("features intern 1: ", features[0].shape)
+    # features = [features[layer] for layer in self.layers_to_extract_from] # list of tensors like usual: WRN50 L2: (1, 512, 28, 28), L3: (1, 1024, 14, 14), L4: (1, 2048, 7, 7)
+    
+    # apply patchify
+    features = [
+        patch_maker.patchify(x, return_spatial_info=True) for x in features
+    ] 
+    # print("features intern 2: ", features[0][0].shape)
+    # interpolate
+    features, patch_shapes = interpolate_bilinear_after_patchify(features=features)
+    # print("features intern 3: ", features[0].shape)
+    # As different feature backbones & patching provide differently
+    # sized features, these are brought into the correct form here.
+    features = forward_modules["preprocessing"](features) # pooling each feature to same channel and stack together; torch.Size([784, 2, 1536])
+    # print("features intern 4: ", features.shape)
+    features = forward_modules["preadapt_aggregator"](features) # further pooling; torch.Size([784, 1536]) --> same shape as the patchcore method
+    # print("features intern 5: ", features.shape)
+    if provide_patch_shapes:
+        return features, patch_shapes
+    return features
+
+
+
+
+### helper functions
+def interpolate_bilinear_after_patchify(features):
+    """Interpolates features to the same size.
+    Upsamples all feature maps to the size of the largest feature map.
+    Uses bilinear interpolation.
+    
+    Input: list of tuples. One tuple for each layer. Each tuple contains the features and the patch shape of the layer. Features itself have shape (1, C, W, H)
+    """
+    patch_shapes = [x[1] for x in features]
+    features = [x[0] for x in features]
+    ref_num_patches = patch_shapes[0] # size of the larger grid, e.g. L2: 28x28; this will later be taken to upsample features from Layers deeper in the net
+
+    for i in range(1, len(features)):
+        _features = features[i]
+        patch_dims = patch_shapes[i]
+
+        # TODO(pgehler): Add comments
+        _features = _features.reshape(
+            _features.shape[0], patch_dims[0], patch_dims[1], *_features.shape[2:] #torch.Size([1, 14, 14, 1024, 3, 3])
+        ) # shape: (1, 14, 14, 1024, 3, 3)
+        _features = _features.permute(0, -3, -2, -1, 1, 2) # torch.Size([1, 1024, 3, 3, 14, 14])
+        perm_base_shape = _features.shape
+        _features = _features.reshape(-1, *_features.shape[-2:]) #([9216, 14, 14])
+        _features = F.interpolate(
+            _features.unsqueeze(1), # torch.Size([9216, 1, 14, 14]) 9126 = 1024 * 3 * 3 --> Why?
+            
+            size=(ref_num_patches[0], ref_num_patches[1]),
+            mode="bilinear",
+            align_corners=False,
+        )
+        _features = _features.squeeze(1) # torch.Size([9216, 28, 28])
+        _features = _features.reshape(
+            *perm_base_shape[:-2], ref_num_patches[0], ref_num_patches[1]
+        ) # torch.Size([1, 1024, 3, 3, 28, 28]) --> back in patches again
+        _features = _features.permute(0, -2, -1, 1, 2, 3)
+        _features = _features.reshape(len(_features), -1, *_features.shape[-3:])
+        features[i] = _features
+    features = [x.reshape(-1, *x.shape[-3:]) for x in features]
+    
+    return features, patch_shapes
+
+
+# Image handling classes.
+class PatchMaker:
+    def __init__(self, patchsize, top_k=0, stride=1):
+        self.patchsize = patchsize
+        self.stride = stride
+        self.top_k = top_k
+
+    def patchify(self, features, return_spatial_info=False):
+        """Convert a tensor into a tensor of respective patches.
+        Args:
+            x: [torch.Tensor, bs x c x w x h]
+        Returns:
+            x: [torch.Tensor, bs * w//stride * h//stride, c, patchsize,
+            patchsize]
+        """
+        padding = int((self.patchsize - 1) / 2)
+        unfolder = torch.nn.Unfold(
+            kernel_size=self.patchsize, stride=self.stride, padding=padding, dilation=1
+        )
+        unfolded_features = unfolder(features)
+        number_of_total_patches = []
+        for s in features.shape[-2:]:
+            n_patches = (
+                s + 2 * padding - 1 * (self.patchsize - 1) - 1
+            ) / self.stride + 1
+            number_of_total_patches.append(int(n_patches))
+        unfolded_features = unfolded_features.reshape(
+            *features.shape[:2], self.patchsize, self.patchsize, -1
+        )
+        unfolded_features = unfolded_features.permute(0, 4, 1, 2, 3)
+
+        if return_spatial_info:
+            return unfolded_features, number_of_total_patches
+        return unfolded_features
+
+    def unpatch_scores(self, x, batchsize):
+        return x.reshape(batchsize, -1, *x.shape[1:])
+
+    def score(self, x):
+        was_numpy = False
+        if isinstance(x, np.ndarray):
+            was_numpy = True
+            x = torch.from_numpy(x)
+        while x.ndim > 2:
+            x = torch.max(x, dim=-1).values
+        if x.ndim == 2:
+            if self.top_k > 1:
+                x = torch.topk(x, self.top_k, dim=1).values.mean(1)
+            else:
+                x = torch.max(x, dim=1).values
+        if was_numpy:
+            return x.numpy()
+        return x
