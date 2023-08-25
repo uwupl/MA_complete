@@ -98,7 +98,7 @@ def calibrate_model(model, loader, device=torch.device("cpu:0")):
             x, _, _, _, _ = inputs
             _ = model(x)
         
-def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, category = 'own', cpu_arch = 'x86', dataset_path = r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/"):
+def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, category = 'own', cpu_arch = 'x86', num_images=100, dataset_path = r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/"):
     '''
     Quantizes a model into quint8. Utilizes layer fusion and calibration.
     
@@ -142,10 +142,10 @@ def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, cat
                     dataset = torch.utils.data.ConcatDataset([dataset, MVTecDataset(root=os.path.join(dataset_path, cat), transform=data_transforms, gt_transform=gt_transforms, phase='train', half=False)])
         elif calibrate.lower().__contains__('imagenet'):
             from .datasets import Own_Imagenet, data_transforms
-            dataset = Own_Imagenet(transform=data_transforms)#, phase='val')
+            dataset = Own_Imagenet(transform=data_transforms, num_images=num_images)#, phase='val')
         elif calibrate.lower().__contains__('random'):
             from .datasets import RandomImageDataset, data_transforms
-            dataset = RandomImageDataset(num_images=100, transform=data_transforms)
+            dataset = RandomImageDataset(num_images=num_images, transform=data_transforms)
         loader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=12)
         calibrate_model(b, loader, device=torch.device("cpu:0"))
     else:

@@ -60,7 +60,7 @@ class PatchCore(pl.LightningModule):
             - load coreset
             - initialize search engine
         test_step: (self.only_img_lvl = True)
-            - devided into subfunctions: test_step_core 
+            - devided into subfunctions: _test_step 
                 feature_extraction
                 feature_embedding
                 calc_score_patches
@@ -730,7 +730,7 @@ class PatchCore(pl.LightningModule):
                 }
             # warm up loop
             for _ in range(self.warm_up_reps):
-                _, _, _, _, _ = self.test_step_core(batch=batch, measure=False)
+                _, _, _, _, _ = self._test_step(batch=batch, measure=False)
             
             # actual measurements
             ################################################
@@ -741,9 +741,9 @@ class PatchCore(pl.LightningModule):
                     st_gpu = record_gpu(st_gpu)
                 st_cpu = record_cpu()
                 if rep+1 == self.number_of_reps:
-                    features, embeddings, score_patches, score, anomaly_map, t_0_cpu, t_1_cpu, t_2_cpu, t_3_cpu, t_4_cpu, t_0_gpu, t_1_gpu, t_2_gpu, t_3_gpu, t_4_gpu = self.test_step_core(batch=batch, measure=True)
+                    features, embeddings, score_patches, score, anomaly_map, t_0_cpu, t_1_cpu, t_2_cpu, t_3_cpu, t_4_cpu, t_0_gpu, t_1_gpu, t_2_gpu, t_3_gpu, t_4_gpu = self._test_step(batch=batch, measure=True)
                 else:
-                    _, _, _, _, _, t_0_cpu, t_1_cpu, t_2_cpu, t_3_cpu, t_4_cpu, t_0_gpu, t_1_gpu, t_2_gpu, t_3_gpu, t_4_gpu = self.test_step_core(batch=batch, measure=True)
+                    _, _, _, _, _, t_0_cpu, t_1_cpu, t_2_cpu, t_3_cpu, t_4_cpu, t_0_gpu, t_1_gpu, t_2_gpu, t_3_gpu, t_4_gpu = self._test_step(batch=batch, measure=True)
                 et_cpu = record_cpu()
                 # gpu
                 if self.cuda_active:
@@ -812,7 +812,7 @@ class PatchCore(pl.LightningModule):
                 pd_run_times.to_csv(file_path)
         
         else:
-            _, _, score_patches, score, anomaly_map = self.test_step_core(batch=batch, measure=False) # calculating of scores and saving of results
+            _, _, score_patches, score, anomaly_map = self._test_step(batch=batch, measure=False) # calculating of scores and saving of results
             # print(score)Fprune
         if type(score_patches) == list and not self.batch_size_test == 1:
             results = (score_patches, anomaly_map)
@@ -826,7 +826,7 @@ class PatchCore(pl.LightningModule):
             self.eval_one_step_test(score_patches, score, anomaly_map, x, gt, label, file_name, x_type)
     
     @torch.inference_mode()                    
-    def test_step_core(self, batch, measure=False):
+    def _test_step(self, batch, measure=False):
         '''
         basically this is one test step where one batch is processed. This func is embedded in the actual def test_step. 
         ''' 

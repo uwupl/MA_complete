@@ -108,14 +108,14 @@ class RandomImageDataset(Dataset):
         return image, 0, 0, 0, 0
     
 class Own_Imagenet(Dataset):
-    def __init__(self, transform):# root = r'/mnt/crucial/UNI/IIIT_Muen/MA/code'):
+    def __init__(self, transform, num_images=2000):# root = r'/mnt/crucial/UNI/IIIT_Muen/MA/code'):
         # img_paths_full = glob.glob(os.path.join(root, phase) + "/*.JPEG")
         # self.img_paths = np.random.choice(img_paths_full, 5000, replace=False)
         self.root_location = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
         file_names_location = os.path.join(self.root_location, 'validation_set_imagenet_file_names.json')
         with open(file_names_location, 'r') as f:
             entire_file_names = json.load(f)
-        self.file_names = np.random.choice(entire_file_names, 2000, replace=False)
+        self.file_names = np.random.choice(entire_file_names,num_images, replace=False)
         self.transform = transform
 
     def __len__(self):

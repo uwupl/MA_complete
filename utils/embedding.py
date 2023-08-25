@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import numba as nb
+# import time
 
 def embedding_concat_frame(embeddings, cuda_active):
     '''
@@ -73,22 +74,24 @@ def reshape_embedding(embedding):
                 counter += 1
     return out
 
-
-
-def _embed(images, forward_modules, patch_maker, provide_patch_shapes=False):#, evaluation=False):
-    """Returns feature embeddings for images."""
-
-    # if not evaluation and self.train_backbone:
+def _feature_extraction(images, forward_modules):
+        # if not evaluation and self.train_backbone:
     #     self.forward_modules["feature_aggregator"].train()
     #     features = self.forward_modules["feature_aggregator"](images, eval=evaluation)
     # else:
+    # t_0 = time.perf_counter()
     forward_modules["backbone"].eval() #forward_modules["feature_aggregator"] = 
     with torch.no_grad():
         features = forward_modules["backbone"](images) # type dict
         # print("features intern 1: ", features[0].shape)
     # features = [features[layer] for layer in self.layers_to_extract_from] # list of tensors like usual: WRN50 L2: (1, 512, 28, 28), L3: (1, 1024, 14, 14), L4: (1, 2048, 7, 7)
+    return features
+
+def _embed(features, forward_modules, patch_maker, provide_patch_shapes=False):#, evaluation=False):
+    """Returns feature embeddings for images."""
     
     # apply patchify
+    # t_1 = time.perf_counter()
     features = [
         patch_maker.patchify(x, return_spatial_info=True) for x in features
     ] 
