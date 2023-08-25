@@ -430,6 +430,11 @@ class SimpleNet(torch.nn.Module):
             masks = []
             features = []
             masks_gt = []
+        
+        if self.measure_inference:
+            total_fe = []
+            total_em = []
+            total_sc = []
 
         with tqdm.tqdm(dataloader, desc="Inferring...", leave=False) as data_iterator:
             if not self.only_img_lvl:
@@ -445,7 +450,7 @@ class SimpleNet(torch.nn.Module):
                         _scores, _masks, _feats = self._predict(image)
                     else:
                         _scores, _masks, _feats, t_1_cpu, t_2_cpu, t_3_cpu = self._predict(image)
-                for score, mask, feat, is_anomaly in zip(_scores, _masks, _feats, label.numpy().tolist()):
+                for score, mask in zip(_scores, _masks, ):
                     scores.append(score)
                     masks.append(mask)
                 return scores, masks, features, labels_gt, masks_gt, t_1_cpu, t_2_cpu, t_3_cpu
@@ -460,8 +465,14 @@ class SimpleNet(torch.nn.Module):
                         _scores, _, _, _, _ = self._predict(image)
                     else:
                         _scores, _, _, _, _, t_fe, t_em, t_sc = self._predict(image)
-                    for score, is_anomaly in zip(_scores, label.numpy().tolist()):
+                    for score, time_fe, time_em, time_sc in zip(_scores, time_fe, time_em, time_sc):
                         scores.append(score)
+                        total_fe.append(time_fe)
+                        total_em.append(time_em)
+                        total_sc.append(time_sc)
+                    t_fe = np.mean(total_fe)
+                    t_em = np.mean(total_em)
+                    t_sc = np.mean(total_sc)
                 return scores, None, None, labels_gt, None, t_fe, t_em, t_sc
             
     def _predict(self, images):
