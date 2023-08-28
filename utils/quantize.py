@@ -17,7 +17,7 @@ import glob
 
 
 class QuantizedModel(nn.Module):
-    def __init__(self, model, layers_needed=None):
+    def __init__(self, model, layers_needed=None, feature_dim=None):
         super(QuantizedModel, self).__init__()
         # self.quant = torch.quantization.QuantStub()
         self.model = nn.Sequential(
@@ -31,7 +31,8 @@ class QuantizedModel(nn.Module):
                 self.model[1][layer+3][-1].register_forward_hook(self.hook_q)
         else:
             self.model[-2][-1].register_forward_hook(self.hook_q)
-    
+        self.feature_dim = feature_dim
+
     def init_features(self):
         self.features = []
 
@@ -119,7 +120,7 @@ def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, cat
     a = fuse_model(fused_model, fuse_list)
     
     # add quantization layers
-    b = QuantizedModel(a, layers_needed=layers_needed)
+    b = QuantizedModel(a, layers_needed=layers_needed, feature_dim = model.feature_dim)
     
     # set config for architecture
     b.qconfig = torch.quantization.get_default_qconfig('fbgemm' if cpu_arch.__contains__('x86') else 'qnnpack')#cpu_arch) # 'qnnpack','x86'
