@@ -5,7 +5,9 @@ import pickle
 from collections import OrderedDict
 from torchvision import transforms
 import numpy as np
+import pandas as pd
 import torch
+import time
 import torch.nn.functional as F
 import tqdm
 import utils.common as common
@@ -36,7 +38,7 @@ class Discriminator(torch.nn.Module):
         super(Discriminator, self).__init__()
 
         _hidden = in_planes if hidden is None else hidden # which is alsoe by default None ???
-        print('Hidden is: ', _hidden)
+        # print('Hidden is: ', _hidden)
         self.body = torch.nn.Sequential()
         for i in range(n_layers-1):
             _in = in_planes if i == 0 else _hidden
@@ -47,7 +49,7 @@ class Discriminator(torch.nn.Module):
                                      torch.nn.BatchNorm1d(_hidden),
                                      torch.nn.LeakyReLU(0.2)
                                  ))
-            print('Hidden is: ', _hidden)
+            # print('Hidden is: ', _hidden)
         self.tail = torch.nn.Linear(_hidden, 1, bias=False)
         self.apply(init_weight)
 
@@ -97,6 +99,9 @@ class SimpleNet(torch.nn.Module):
         self.input_shape = (3,224,224)
         self.only_img_lvl = True
         self.measure_inference = True
+        if self.measure_inference:
+            self.number_of_reps = 50 # number of reps during measurement. Beacause we can assume a consistent estimator, results get more accurate with more reps
+            self.warm_up_reps = 10 # before the actual measurement is done, we execute the process a couple of times without measurement to ensure that there is no influence of initialization and that the circumstances (e.g. thermal state of hardware) are representive.
         # Backbone
         self.backbone_id = 'RN18' # analogous to model_id
         self.layers_to_extract_from = [2,3] # analogous to layers_needed
@@ -136,12 +141,14 @@ class SimpleNet(torch.nn.Module):
         # Scoring 
         self.adapted_score_calc = True # TODO
         self.top_k = 3
-        self.batch_size_test = 8
+        self.batch_size_test = 1
         # Directory
         self.model_dir = r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/simplenet'
         self.run_id = 'none'
         self.category = 'pill'
         self.dataset_path = MVTEC_DIR
+        self.time_stamp = f'{int(time.time())}'
+        self.group_id = 'not_specified'
         # Data transforms
         self.load_size = 256
         self.input_size = 224
@@ -197,6 +204,8 @@ class SimpleNet(torch.nn.Module):
         self.dsc_opt = torch.optim.AdamW(self.discriminator.parameters(), self.dsc_lr, weight_decay=1e-5)
         self.dsc_schl = torch.optim.lr_scheduler.CosineAnnealingLR(self.dsc_opt, self.meta_epochs, eta_min=self.dsc_lr*.4)
         
+
+
     def set_model_dir(self):
         # print("model_dir: ",self.model_dir)
         # self.model_dir = model_dir
@@ -225,12 +234,19 @@ class SimpleNet(torch.nn.Module):
         main function
         '''
         self.set_model_dir()
+
+        self.log_path = os.path.join(os.path.dirname(__file__), "results",f"{self.group_id}", "csv")
+        if not os.path.exists(self.log_path):
+            os.makedirs(self.log_path)
+        self.latences_filename = f'latences_{self.group_id}_{self.time_stamp}.csv'
+        self.acc_filename = f'acc_{self.group_id}_{self.time_stamp}.csv'
         state_dict = {}
         training_data = self.train_dataloader()
         test_data = self.test_dataloader()
         
         ckpt_path = os.path.join(self.ckpt_dir, "ckpt.pth")
-        if os.path.exists(ckpt_path):
+        ### test
+        if os.path.exists(ckpt_path): # model is already trained - we therefore assume training has already be done
             state_dict = torch.load(ckpt_path, map_location=self.device)
             if 'discriminator' in state_dict:
                 self.discriminator.load_state_dict(state_dict['discriminator'])
@@ -240,16 +256,34 @@ class SimpleNet(torch.nn.Module):
                 print('No discriminator in state_dict!')
                 self.load_state_dict(state_dict, strict=False)
 
-            self.predict(training_data, "train_")
+            # self.predict(training_data, "train_")
             if not self.measure_inference:
                 scores, segmentations, features, labels_gt, masks_gt = self.predict(test_data)
             else:
-                scores, segmentations, features, labels_gt, masks_gt, t_1_cpu, t_2_cpu, t_3_cpu = self.predict(test_data)
-                print('Time for feature extraction: ', t_1_cpu)
-                print('Time for embedding: ', t_2_cpu)
-                print('Time for discriminator: ', t_3_cpu)
+                scores, segmentations, features, labels_gt, masks_gt, run_times = self.predict(test_data)
+                # print('Time for feature extraction: ', t_1_cpu)
+                # print('Time for embedding: ', t_2_cpu)
+                # print('Time for discriminator: ', t_3_cpu)
+
             auroc, full_pixel_auroc, anomaly_pixel_auroc = self._evaluate(scores, segmentations, features, labels_gt, masks_gt)
-            
+                        # save as csv using pandas dataframe
+            #, index=[batch_idx])
+            if self.measure_inference:
+                pd_run_times = pd.DataFrame(run_times)
+                file_path = os.path.join(self.log_path, self.latences_filename)
+                if os.path.exists(file_path):
+                    pd_run_times_ = pd.read_csv(file_path, index_col=0)
+                    pd_run_times = pd.concat([pd_run_times_, pd_run_times], axis=0)
+                    pd_run_times.to_csv(file_path)
+                else:
+                    pd_run_times.to_csv(file_path)
+
+                file_path = os.path.join(self.log_path, self.latences_filename)
+                pd_run_times_ = pd.read_csv(file_path, index_col=0)
+                pd_results = pd.DataFrame({'img_auc': [auroc]*pd_run_times_.shape[0], 'pixel_auc': [full_pixel_auroc]*pd_run_times_.shape[0]})
+                pd_run_times = pd.concat([pd_run_times_, pd_results], axis=1)
+                pd_run_times.to_csv(file_path)
+
             return auroc, full_pixel_auroc, anomaly_pixel_auroc
     
         def update_state_dict():
@@ -414,9 +448,61 @@ class SimpleNet(torch.nn.Module):
 
 
     def predict(self, data, prefix=""):
-        if isinstance(data, torch.utils.data.DataLoader):
-            return self._predict_dataloader(data, prefix)
-        return self._predict(data)
+        if not self.measure_inference:
+            if isinstance(data, torch.utils.data.DataLoader):
+                return self._predict_dataloader(data, prefix)
+            return self._predict(data)
+        else:
+            t_fe_total = []
+            t_em_total = []
+            t_sp_total = []
+            t_si_total = []
+            run_times = {
+                '#1 feature extraction cpu': [],
+                '#2 feature extraction gpu': [],
+                '#3 embedding of features cpu': [],
+                '#4 embedding of features gpu': [],
+                '#5 score patches cpu': [],
+                '#6 score patches gpu': [],
+                '#7 img lvl score cpu': [],
+                '#8 img lvl score gpu': [],
+                '#9 anomaly map cpu': [],
+                '#10 anomaly map gpu': [],
+                '#11 whole process cpu': [],
+                '#12 whole process gpu': [],
+                '#13 dim reduction cpu': [],
+                '#14 dim reduction gpu': []          
+            }
+            if isinstance(data, torch.utils.data.DataLoader):
+                # warm up
+                for _ in range(self.warm_up_reps):
+                    _ =  self._predict_dataloader(data, prefix)
+                # measurement
+                for _ in range(self.number_of_reps):
+                    scores, masks, features, labels_gt, masks_gt, t_fe, t_em, t_sp, t_si = self._predict_dataloader(data, prefix)
+                    t_fe_total.append(t_fe * 1e3) # feature extraction
+                    t_em_total.append(t_em * 1e3) # embedding
+                    t_sp_total.append(t_sp * 1e3) # score patches
+                    t_si_total.append(t_si * 1e3) # score image
+                run_times['#1 feature extraction cpu'] = t_fe_total
+                run_times['#2 feature extraction gpu'] = 0.0
+                run_times['#3 embedding of features cpu'] = t_em_total
+                run_times['#4 embedding of features gpu'] = 0.0
+                run_times['#5 score patches cpu'] = t_sp_total
+                run_times['#6 score patches gpu'] = 0.0
+                run_times['#7 img lvl score cpu'] = t_si_total
+                run_times['#8 img lvl score gpu'] = 0.0
+                run_times['#9 anomaly map cpu'] = 0.0
+                run_times['#10 anomaly map gpu'] = 0.0
+                run_times['#11 whole process cpu'] = np.array(t_fe_total) + np.array(t_em_total) + np.array(t_sp_total) + np.array(t_si_total)
+                run_times['#12 whole process gpu'] = 0.0
+                run_times['#13 dim reduction cpu'] = 0.0
+                run_times['#14 dim reduction gpu'] = 0.0
+                return scores, masks, features, labels_gt, masks_gt, run_times
+
+
+            else:
+                raise NotImplementedError('measurement for single picture not implemented yet.')
 
     def _predict_dataloader(self, dataloader, prefix):
         """This function provides anomaly scores/maps for full dataloaders."""
@@ -434,7 +520,8 @@ class SimpleNet(torch.nn.Module):
         if self.measure_inference:
             total_fe = []
             total_em = []
-            total_sc = []
+            total_sp = []
+            total_si = []
 
         with tqdm.tqdm(dataloader, desc="Inferring...", leave=False) as data_iterator:
             if not self.only_img_lvl:
@@ -462,18 +549,25 @@ class SimpleNet(torch.nn.Module):
                     # image = image
                     img_paths.extend(img_path)
                     if not self.measure_inference:
-                        _scores, _, _, _, _ = self._predict(image)
+                        _scores, _, _ = self._predict(image)
                     else:
-                        _scores, _, _, _, _, t_fe, t_em, t_sc = self._predict(image)
-                    for score, time_fe, time_em, time_sc in zip(_scores, time_fe, time_em, time_sc):
+                        _scores, _, _, t_fe, t_em, t_sp, t_si  = self._predict(image)
+                    #for score, time_fe, time_em, time_sc in zip(_scores, time_fe, time_em, time_sc):
+                    for score in _scores:
                         scores.append(score)
-                        total_fe.append(time_fe)
-                        total_em.append(time_em)
-                        total_sc.append(time_sc)
-                    t_fe = np.mean(total_fe)
-                    t_em = np.mean(total_em)
-                    t_sc = np.mean(total_sc)
-                return scores, None, None, labels_gt, None, t_fe, t_em, t_sc
+                    if self.measure_inference:
+                        total_fe.append(t_fe)
+                        total_em.append(t_em)
+                        total_sp.append(t_sp)
+                        total_si.append(t_si)
+                if self.measure_inference:
+                    t_fe = np.mean(total_fe) / len(_scores)
+                    t_em = np.mean(total_em) / len(_scores)
+                    t_sp = np.mean(total_sp) / len(_scores)
+                    t_si = np.mean(total_si) / len(_scores)
+                    return scores, None, None, labels_gt, None, t_fe, t_em, t_sp, t_si
+                else:
+                    return scores, None, None, labels_gt, None
             
     def _predict(self, images):
         """Infer score and mask for a batch of images."""
@@ -519,7 +613,7 @@ class SimpleNet(torch.nn.Module):
                     masks, features = self.anomaly_segmentor.convert_to_segmentation(score_patches, features)
                     return list(image_scores), list(masks), list(features)
                 else:
-                    return list(image_scores), None, None, None, None
+                    return list(image_scores), None, None#, None, None
             else:
                 # feature extraction
                 t_0_cpu = perf_counter()
@@ -538,24 +632,23 @@ class SimpleNet(torch.nn.Module):
                 # discriminator
                 score_patches = -self.discriminator(features)
                 score_patches = score_patches.cpu().numpy()
+
+                t_3_cpu = perf_counter()
                 image_scores = score_patches.copy()
 
                 image_scores = self.patch_maker.unpatch_scores(
                     image_scores, batchsize=batchsize
                 )
                 image_scores = self.patch_maker.score(image_scores)
-                t_3_cpu = perf_counter()
+                t_4_cpu = perf_counter()
                 if not self.only_img_lvl:
                     scales = patch_shapes[0]
                     score_patches = score_patches.reshape(batchsize, scales[0], scales[1])
                     features = features.reshape(batchsize, scales[0], scales[1], -1)
                     masks, features = self.anomaly_segmentor.convert_to_segmentation(score_patches, features)
-                    return list(image_scores), list(masks), list(features), t_1_cpu-t_0_cpu, t_2_cpu-t_1_cpu, t_3_cpu-t_2_cpu
+                    return list(image_scores), list(masks), list(features), t_1_cpu-t_0_cpu, t_2_cpu-t_1_cpu, t_3_cpu-t_2_cpu, t_4_cpu-t_3_cpu
                 else:
-                    return list(image_scores), None, None, None, None, t_1_cpu-t_0_cpu, t_2_cpu-t_1_cpu, t_3_cpu-t_2_cpu
-
-
-
+                    return list(image_scores), None, None, t_1_cpu-t_0_cpu, t_2_cpu-t_1_cpu, t_3_cpu-t_2_cpu, t_4_cpu-t_3_cpu
     
     def train_dataloader(self):
         '''
@@ -598,15 +691,21 @@ class SimpleNet(torch.nn.Module):
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = SimpleNet(device)
-    number_of_samples = [1, 10, 100, 1000, 10000]
-    dataset_type = ['random', 'imagenet']
+    number_of_samples = [1]#, 10, 100, 1000, 10000]
+    dataset_type = ['random']#, 'imagenet']
     model.category = 'pill'
+    model.meta_epochs = 2
+    model.measure_inference
     for dataset in dataset_type:
         for no_samples in number_of_samples:
             model.num_images_calib = no_samples
             model.calibration_dataset = dataset
             model.run_id = f'calibration_dataset_{dataset}_{no_samples}'
+            model.measure_inference = False
+            print('Training...\n\n')
             model.train()#model.train_dataloader(), model.test_dataloader())
+            print('Testing...\n\n')
+            model.measure_inference = True
             model.train() # equal to test! Model is already trained, so this model is loaded and the inference is done directly
     # model.predict(model.test_d
     
