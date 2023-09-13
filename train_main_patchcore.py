@@ -4,8 +4,10 @@ from utils.feature_adaptor import get_feature_adaptor, FeatureAdaptor
 from utils.datasets import MVTecDataset
 from utils.utils import min_max_norm, heatmap_on_image, cvt2heatmap, record_gpu, modified_kNN_score_calc, calc_anomaly_map #  distance_matrix, softmax
 from utils.pooling import adaptive_pooling
-from utils.embedding import reshape_embedding, embedding_concat_frame, _embed
+from utils.embedding import reshape_embedding, embedding_concat_frame, PatchMaker#, _embed
 from utils.search import KNN
+import utils.common as common
+# from utils.embedding import PatchMaker, _embed
 from utils.quantize import quantize_model_into_qint8
 from utils.kcenter_greedy import kCenterGreedy
 from path_definitions import ROOT_DIR, RES_DIR, PLOT_DIR, MVTEC_DIR, EMBEDDING_DIR
@@ -119,6 +121,7 @@ class PatchCore(pl.LightningModule):
         self.adapt_feature = False
         self.feature_adaptor = None
         self.calibration_dataset = 'imagenet' # options: 'target', 'mvtec', 'imagenet', 'random' or None for no calibration and loading pretrained model; only relevant if self.quantize_qint8 = True
+        self.num_images_calib = 100
         self.quantize_qint8_torchvision = False
         # self.idx_chosen = np.array([], dtype=np.int32)
         self.idx_chosen = np.arange(128,dtype=np.int32) # TODO
@@ -192,7 +195,7 @@ class PatchCore(pl.LightningModule):
         self.inv_normalize = transforms.Normalize(mean=list(np.divide(np.multiply(-1,means), stds)), std=list(np.divide(1, stds))) # aus imagenet
         if self.quantization:
             self = self.half()
-        self.pooling_embedding = False
+        self.pooling_embedding = True
 
 
     def init_results_list(self):
@@ -281,7 +284,7 @@ class PatchCore(pl.LightningModule):
         else:
             self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, prune_output_layer=(False, []), prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, need_for_own_last_layer=self.need_for_own_last_layer, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).eval() # prune_l1_norm=self.prune_l1_unstructured,
             if self.quantize_qint8:
-                self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=self.calibration_dataset, category=self.category, cpu_arch=self.cpu_arch, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
+                self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=self.calibration_dataset, category=self.category, cpu_arch=self.cpu_arch, num_images=self.num_images_calib, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
             
             self.dummy_input = torch.randn(1, 3, self.input_size, self.input_size)
         # determine output shape of model
@@ -338,25 +341,23 @@ class PatchCore(pl.LightningModule):
         # initialize numpy array for embeddings
         self.embedding_np = np.array([])
 
-        if not self.pooling_embedding:
-            import utils.common as common
-            from utils.embedding import PatchMaker, _embed
-            self.pretrain_embed_dimensions = 256 + 128 # for RN18
-            self.target_embed_dimensions = 128 + 256 # for RN18
-            self.patch_size = 3
-            self.patch_stride = 1
-            self.embedding_size = None # TODO --> What does that do?
-            # Projection
-            self.pre_proj = 1 # TODO
-            self.proj_layer_type = 0 # TODO
-            self.top_k = 3
-            self.patch_maker = PatchMaker(patchsize=self.patch_size,top_k=self.top_k, stride=self.patch_stride)
-            preprocessing = common.Preprocessing(input_dims = self.backbone.feature_dim, output_dim = self.pretrain_embed_dimensions).to(self.device)
-            self.forward_modules = torch.nn.ModuleDict({})
-            self.forward_modules['preprocessing'] = preprocessing
-            
-            preadapt_aggregator = common.Aggregator(target_dim = self.target_embed_dimensions).to(self.device)
-            self.forward_modules['preadapt_aggregator'] = preadapt_aggregator
+        # if not self.pooling_embedding:
+        self.pretrain_embed_dimensions = 256 + 128 # for RN18
+        self.target_embed_dimensions = 128 + 256 # for RN18
+        self.patch_size = 3
+        self.patch_stride = 1
+        self.embedding_size = None # TODO --> What does that do?
+        # Projection
+        self.pre_proj = 1 # TODO
+        self.proj_layer_type = 0 # TODO
+        self.top_k = 3
+        self.patch_maker = PatchMaker(patchsize=self.patch_size,top_k=self.top_k, stride=self.patch_stride)
+        preprocessing = common.Preprocessing(input_dims = self.backbone.feature_dim, output_dim = self.pretrain_embed_dimensions).to(self.device)
+        self.forward_modules = torch.nn.ModuleDict({})
+        self.forward_modules['preprocessing'] = preprocessing
+        
+        preadapt_aggregator = common.Aggregator(target_dim = self.target_embed_dimensions).to(self.device)
+        self.forward_modules['preadapt_aggregator'] = preadapt_aggregator
     
     def on_test_start(self):
         
@@ -423,15 +424,15 @@ class PatchCore(pl.LightningModule):
                     self.index = [faiss.index_cpu_to_gpu(res, 0 ,self.index[i]) for i in range(self.multiple_coresets[1])]
             elif self.own_knn:
                 if self.metrics_p is not None:
-                    self.knn = [KNN(torch.from_numpy(pickle.load(open(os.path.join(self.embedding_dir_path, f'embedding_{k}.pickle'), 'rb'))), k=self.n_neighbors, metric=self.metrices[self.metric_id], p=self.metrics_p) for k in range(self.multiple_coresets[1])]
+                    self.knn = [KNN(torch.from_numpy(pickle.load(open(os.path.join(self.embedding_dir_path, f'embedding_{n}.pickle'), 'rb'))), k=self.n_neighbors, metric=self.metrices[self.metric_id], p=self.metrics_p) for n in range(self.multiple_coresets[1])]
                 elif self.metric_id == 17: # mahalanobis distance
                     print('loading inv_cov')
                     inv_cov = np.load(os.path.join(self.embedding_dir_path, 'inv_cov.npy'))  #pickle.load(open(os.path.join(self.embedding_dir_path, 'inv_cov.pickle'), 'rb')) # from training
-                    self.knn = [KNN(torch.from_numpy(pickle.load(open(os.path.join(self.embedding_dir_path, f'embedding_{k}.pickle'), 'rb'))), k=self.n_neighbors, metric=self.metrices[self.metric_id], inv_cov=inv_cov) for k in range(self.multiple_coresets[1])]
+                    self.knn = [KNN(torch.from_numpy(pickle.load(open(os.path.join(self.embedding_dir_path, f'embedding_{n}.pickle'), 'rb'))), k=self.n_neighbors, metric=self.metrices[self.metric_id], inv_cov=inv_cov) for n in range(self.multiple_coresets[1])]
                 else:
-                    self.knn = [KNN(torch.from_numpy(pickle.load(open(os.path.join(self.embedding_dir_path, f'embedding_{k}.pickle'), 'rb'))), k=self.n_neighbors, metric=self.metrices[self.metric_id]) for k in range(self.multiple_coresets[1])]
+                    self.knn = [KNN(torch.from_numpy(pickle.load(open(os.path.join(self.embedding_dir_path, f'embedding_{n}.pickle'), 'rb'))), k=self.n_neighbors, metric=self.metrices[self.metric_id]) for n in range(self.multiple_coresets[1])]
             else:
-                self.nbrs = [NearestNeighbors(n_neighbors=self.n_neighbors, algorithm='ball_tree', metric='minkowski', p=2).fit(pickle.load(open(os.path.join(self.embedding_dir_path, f'embedding_{k}.pickle'), 'rb'))) for k in range(self.multiple_coresets[1])]
+                self.nbrs = [NearestNeighbors(n_neighbors=self.n_neighbors, algorithm='ball_tree', metric='minkowski', p=2).fit(pickle.load(open(os.path.join(self.embedding_dir_path, f'embedding_{n}.pickle'), 'rb'))) for n in range(self.multiple_coresets[1])]
         # initialize results list
         self.init_results_list()
         
@@ -445,34 +446,38 @@ class PatchCore(pl.LightningModule):
         #     features = list([features]) # TODO: probably because of missing forward hook there is no list of tensores as an output, but directly a tensor
         if self.save_features: # only one layer at a time!!
             self.features_to_store.append(features[0].detach().cpu())        
-        embeddings = []
-        for k, feature in enumerate(features):
-            if type(self.pooling_strategy) == list:
-                # print('1: ', feature.shape)
-                # if self.quantize_qint8:
-                #     feature = feature[None,:]
-                for strategy in self.pooling_strategy:
-                    # print('hallihallo')
-                    # print('2: ', feature.shape)
-                    pooled_feature = adaptive_pooling(feature, strategy)
+        
+        if self.pooling_embedding:
+            embeddings = []
+            for k, feature in enumerate(features):
+                if type(self.pooling_strategy) == list:
+                    # print('1: ', feature.shape)
+                    # if self.quantize_qint8:
+                    #     feature = feature[None,:]
+                    for strategy in self.pooling_strategy:
+                        # print('hallihallo')
+                        # print('2: ', feature.shape)
+                        pooled_feature = adaptive_pooling(feature, strategy)
+                        embeddings.append(pooled_feature)
+                else:
+                    pooled_feature = adaptive_pooling(feature, self.pooling_strategy)
                     embeddings.append(pooled_feature)
+
+            embedding = embedding_concat_frame(embeddings=embeddings, cuda_active=self.cuda_active) # shape (batch, 448, 16, 16) --> default
+            reshaped_embeddings = reshape_embedding(np.array(embedding))
+            # if self.adapt_feature: # feature adaptor is trained after feauters are extracted by regular backbone
+                # reshaped_embeddings = self.feature_adaptor(torch.from_numpy(reshaped_embeddings)).detach().numpy()
+            if batch_idx == int(0):
+                self.embedding_np = reshaped_embeddings
             else:
-                pooled_feature = adaptive_pooling(feature, self.pooling_strategy)
-                embeddings.append(pooled_feature)
-            
-        embedding = embedding_concat_frame(embeddings=embeddings, cuda_active=self.cuda_active) # shape (batch, 448, 16, 16) --> default
-        reshaped_embeddings = reshape_embedding(np.array(embedding))
-        # if self.adapt_feature: # feature adaptor is trained after feauters are extracted by regular backbone
-            # reshaped_embeddings = self.feature_adaptor(torch.from_numpy(reshaped_embeddings)).detach().numpy()
-        if batch_idx == int(0):
-            self.embedding_np = reshaped_embeddings
-        else:
-            # print('lo')
-            # print(embedding.shape)
-            self.embedding_np = np.append(self.embedding_np, reshaped_embeddings, axis=0)#.extend(reshape_embedding(np.array(embedding)))
+                # print('lo')
+                # print(embedding.shape)
+                self.embedding_np = np.append(self.embedding_np, reshaped_embeddings, axis=0)#.extend(reshape_embedding(np.array(embedding)))
         
                 ### temp ###
-
+        else:
+            embedded_feature = _embed(features, self.forward_modules, self.patch_maker)#, self.pre_proj, self.proj_layer_type)
+            self.embedding_np = embedded_feature.numpy()
     def select_channels_core(self, total_embeddings):
         '''
         Select channels based on chosen scheme. If scheme is 'std', the channels with the highest std are chosen.
@@ -669,8 +674,9 @@ class PatchCore(pl.LightningModule):
         print('final embedding size : ', self.embedding_coreset.shape)
         #faiss
         # in case coreset has less samples than required for neighbors
-        if self.n_neighbors > self.embedding_coreset.shape[0]:
-            self.n_neighbors = self.embedding_coreset.shape[0]
+        idx = 1 if self.multiple_coresets[0] else 0
+        if self.n_neighbors > self.embedding_coreset.shape[idx]:
+            self.n_neighbors = self.embedding_coreset.shape[idx]
             
         # calculate inverse covariance matrix for mahalanobis distance
         if self.metric_id == 17: # mahalanobis distance
@@ -857,14 +863,25 @@ class PatchCore(pl.LightningModule):
     def _test_step(self, batch, measure=False):
         '''
         basically this is one test step where one batch is processed. This func is embedded in the actual def test_step. 
-        ''' 
+        '''
         if not measure:
             x, _, _, _, _ = batch
             batch_size_1 = (x.shape[0] == 1)
             batch_size = x.shape[0]
             # extract embedding
             features = self.feature_extraction(x=x)
-            if not self.pooling_embedding:
+            # temp_measure = False
+            # if temp_measure:
+            #     t_00 = record_cpu()
+            #     out_1 = self.feature_embedding(features=features, batch_size_1=batch_size_1, batch_size=batch_size)
+            #     t_01 = record_cpu()
+            #     print('feature embedding time for pooling: ', -(t_00 - t_01)*1000)
+
+            #     t_10 = record_cpu()
+            #     out_2 = _embed(features, self.forward_modules, self.patch_maker)#, batch_size_1=batch_size_1, batch_size=batch_size)
+            #     t_11 = record_cpu()
+            #     print('feature embedding time for patchify: ', -(t_10 - t_11)*1000)
+            if self.pooling_embedding:
                 embeddings = self.feature_embedding(features=features, batch_size_1=batch_size_1, batch_size=batch_size)
             else:
                 embeddings = _embed(features, self.forward_modules, self.patch_maker)#, batch_size_1=batch_size_1, batch_size=batch_size)
@@ -891,6 +908,7 @@ class PatchCore(pl.LightningModule):
             return features, embeddings, score_patches, score, anomaly_map 
             
         else:
+            # t_00 = record_cpu()
             ############################################################
             # INITIALIZE MEASUREMENT UTILS
             # initialize cuda events
@@ -920,7 +938,7 @@ class PatchCore(pl.LightningModule):
             t_1_cpu = record_cpu()
             if self.cuda_active:
                 t_1_gpu = record_gpu(t_1_gpu)
-            if not self.pooling_embedding:
+            if self.pooling_embedding:
                 embeddings = self.feature_embedding(features=features, batch_size_1=batch_size_1, batch_size=batch_size)
             else:
                 embeddings = _embed(features, self.forward_modules, self.patch_maker)#, batch_size_1=batch_size_1, batch_size=batch_size)
@@ -933,13 +951,18 @@ class PatchCore(pl.LightningModule):
             if self.cuda_active:
                 t_2_gpu = record_gpu(t_2_gpu)
             
+            # t_0 = record_cpu()
             score_patches = self.calc_score_patches(embeddings=embeddings, batch_size_1=batch_size_1)
+            # t_1 = record_cpu()
+            # print('score patches time: ', (t_0 - t_1)*1000)
             # NN SEARCH // SCORE PATCHES
             ############################################################
             
             ############################################################
             # IMG LEVEL SCORE
             t_3_cpu = record_cpu()
+            
+            # t_0 = record_cpu()
             if self.cuda_active:
                 t_3_gpu = record_gpu(t_3_gpu)
             if not self.multiple_coresets or self.coreset_sampling_ratio == 1.0:
@@ -947,6 +970,8 @@ class PatchCore(pl.LightningModule):
             else:
                 score = [self.calc_img_score(score_patches=score_patches_) for score_patches_ in score_patches]
             # IMG LEVEL SCORE
+            # t_1 = record_cpu()
+            # print('img lvl score time: ', (t_0 - t_1)*1000)
             ############################################################
             
             ############################################################
@@ -964,7 +989,8 @@ class PatchCore(pl.LightningModule):
                 anomaly_map = None
             # ANOMALY MAP
             ############################################################
-            
+            # t_11 = record_cpu()
+            # print('entire process time: ', (t_00 - t_11)*1000)
             return features, embeddings, score_patches, score, anomaly_map, t_0_cpu, t_1_cpu, t_2_cpu, t_3_cpu, t_4_cpu, t_0_gpu, t_1_gpu, t_2_gpu, t_3_gpu, t_4_gpu
         
     @torch.inference_mode()    
@@ -1025,6 +1051,8 @@ class PatchCore(pl.LightningModule):
             torch_features = torch.from_numpy(flattened_features).to(device='cuda:0' if self.cuda_active and torch.cuda.is_available() else 'cpu')
             flattened_features = self.feature_adaptor(torch_features).detach().cpu().numpy()
     
+        flattened_features = torch.from_numpy(flattened_features)#.to(device='cuda:0' if self.cuda_active and torch.cuda.is_available() else 'cpu')
+        
         return flattened_features
         
     def calc_score_patches(self, embeddings, batch_size_1):
@@ -1036,14 +1064,18 @@ class PatchCore(pl.LightningModule):
                 if self.faiss_quantized or self.faiss_standard:
                     score_patches, _ = self.index.search(embeddings , k=self.n_neighbors)
                 elif self.own_knn:
-                    score_patches = self.knn(torch.from_numpy(embeddings))[0].cpu().detach().numpy() # .cuda()
+                    score_patches = self.knn(embeddings)[0].cpu().detach().numpy() # .cuda()
                 else:
                     score_patches, _ = self.nbrs.kneighbors(embeddings)
             else:
                 if self.faiss_quantized or self.faiss_standard:
-                    score_patches = [self.index.search(element, k=self.n_neighbors)[0] for element in embeddings]
+                    score_patches = [self.index.search(element, k=self.n_neighbors)[0] for element in embeddings] # TODO
                 elif self.own_knn:
-                    score_patches = [self.knn(torch.from_numpy(element)[0].cpu().detach().numpy()) for element in embeddings] #.cuda()
+                    # if self.pooling_embedding:
+                    # if not self.pooling_embedding:
+                    score_patches_ = self.knn(embeddings)[0].cpu().detach().numpy()
+                    # else:
+                    #     score_patches_ = self.knn(torch.from_numpy(embeddings))[0].cpu().detach().numpy()
                 else:
                     score_patches = [self.nbrs.kneighbors(element) for element in embeddings]
             
@@ -1053,10 +1085,16 @@ class PatchCore(pl.LightningModule):
             if batch_size_1:
                 score_patches = []
                 for k in range(self.multiple_coresets[1]):
+                    # t_0 = record_cpu()
                     if self.faiss_quantized or self.faiss_standard:
-                        score_patches_ = self.index[k].search(embeddings , k=self.n_neighbors)
+                        score_patches_, _ = self.index[k].search(embeddings.numpy(), k=self.n_neighbors)
                     elif self.own_knn:
-                        score_patches_ = self.knn[k](torch.from_numpy(embeddings))[0].cpu().detach().numpy()
+                        # if not self.pooling_embedding:
+                        score_patches_ = self.knn[k](embeddings)[0].cpu().detach().numpy()
+                        # else:
+                            # score_patches_ = self.knn[k](torch.from_numpy(embeddings))[0].cpu().detach().numpy()
+                    # t_1 = record_cpu()
+                    # print('time for one search: ', (t_1-t_0)*1000)
                     score_patches += [score_patches_]
             else:
                 raise NotImplementedError('multiple coresets not implemented for batch_size > 1')
@@ -1235,7 +1273,7 @@ if __name__ == '__main__':
     model.quantize_qint8 = True
     model.calibration_dataset = 'random'
     model.coreset_sampling_method = 'k_center_greedy'
-    model.measure_inference = True
+    model.measure_inference = False
     model.quantize_qint8_torchvision = False
     model.own_knn = True
     model.faiss_standard = False
@@ -1244,9 +1282,13 @@ if __name__ == '__main__':
     model.save_embeddings = False
     model.metric_id = 0
     model.adapt_feature = False
-    model.multiple_coresets = [True, 10]
+    model.multiple_coresets = [True, 2]
     # model.metric_id = 4 # cosine
     # model.metric_id = 2 # manhattan / L1
-    model.pooling_embedding = False
-    
+    model.number_of_reps = 3
+    model.warm_up_reps = 1
+    model.measure_inference = False
+    model.pooling_embedding = True
     one_run_of_model(model, train_and_test)
+    # model.pooling_embedding = False
+    # one_run_of_model(model, train_and_test)

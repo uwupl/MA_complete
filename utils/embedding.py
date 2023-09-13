@@ -92,6 +92,7 @@ def _embed(features, forward_modules, patch_maker, provide_patch_shapes=False):#
     
     # apply patchify
     # t_1 = time.perf_counter()
+    # print('_embed')
     features = [
         patch_maker.patchify(x, return_spatial_info=True) for x in features
     ] 

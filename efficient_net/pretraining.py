@@ -12,8 +12,12 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.models import Wide_ResNet101_2_Weights
 from tqdm import tqdm
-from common import (get_pdn_small, get_pdn_medium,
-                    ImageFolderWithoutTarget, InfiniteDataloader)
+if __name__ == '__main__':
+    from common import (get_pdn_small, get_pdn_medium,
+                            ImageFolderWithoutTarget, InfiniteDataloader)
+else:   
+    from .common import (get_pdn_small, get_pdn_medium,
+                            ImageFolderWithoutTarget, InfiniteDataloader)
 
 
 def get_argparse():

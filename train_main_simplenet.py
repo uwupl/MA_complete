@@ -21,7 +21,7 @@ from path_definitions import ROOT_DIR, RES_DIR, PLOT_DIR, MVTEC_DIR, EMBEDDING_D
 from utils.datasets import MVTecDataset
 from torch.utils.data import DataLoader
 from time import perf_counter
-
+from torchinfo import summary
 
 def init_weight(m):
     '''
@@ -100,17 +100,17 @@ class SimpleNet(torch.nn.Module):
         self.only_img_lvl = True
         self.measure_inference = True
         if self.measure_inference:
-            self.number_of_reps = 50 # number of reps during measurement. Beacause we can assume a consistent estimator, results get more accurate with more reps
-            self.warm_up_reps = 10 # before the actual measurement is done, we execute the process a couple of times without measurement to ensure that there is no influence of initialization and that the circumstances (e.g. thermal state of hardware) are representive.
+            self.number_of_reps = 5 # number of reps during measurement. Beacause we can assume a consistent estimator, results get more accurate with more reps
+            self.warm_up_reps = 1 # before the actual measurement is done, we execute the process a couple of times without measurement to ensure that there is no influence of initialization and that the circumstances (e.g. thermal state of hardware) are representive.
         # Backbone
         self.backbone_id = 'RN18' # analogous to model_id
         self.layers_to_extract_from = [2,3] # analogous to layers_needed
         self.quantize_qint8 = True
-        if self.quantize_qint8:
-            self.device = 'cpu'
-            self.calibration_dataset = 'random'
-            self.cpu_arch = 'x86'
-            self.num_images_calib = 100
+        # if self.quantize_qint8: because argumens have to be initialized before they can be tweaked from the outside
+        self.device = 'cpu'
+        self.calibration_dataset = 'random'
+        self.cpu_arch = 'x86'
+        self.num_images_calib = 100
         # Embedding
         self.pretrain_embed_dimensions = 256 + 128 # for RN18
         self.target_embed_dimensions = 128 + 256 # for RN18
@@ -144,7 +144,7 @@ class SimpleNet(torch.nn.Module):
         self.batch_size_test = 1
         # Directory
         self.model_dir = r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/simplenet'
-        self.run_id = 'none'
+        # self.run_id = 'none' #not used here
         self.category = 'pill'
         self.dataset_path = MVTEC_DIR
         self.time_stamp = f'{int(time.time())}'
@@ -210,7 +210,7 @@ class SimpleNet(torch.nn.Module):
         # print("model_dir: ",self.model_dir)
         # self.model_dir = model_dir
         os.makedirs(self.model_dir, exist_ok=True)
-        self.ckpt_dir = os.path.join(self.model_dir, self.run_id, self.category)
+        self.ckpt_dir = os.path.join(self.model_dir, self.group_id, self.category)
         os.makedirs(self.ckpt_dir, exist_ok=True)
         # self.tb_dir = os.path.join(self.ckpt_dir, "tb")
         # os.makedirs(self.tb_dir, exist_ok=True)
@@ -227,21 +227,20 @@ class SimpleNet(torch.nn.Module):
     #                 features.append(_embed(input_image, self.forward_modules, self.patch_maker))
     #         return features
     #     return _embed(data, self.forward_modules, self.patch_maker)
-    
-    
-    def train(self):#, training_data, test_data):
+
+    def test(self):#, training_data, test_data):
         '''
         main function
         '''
         self.set_model_dir()
 
-        self.log_path = os.path.join(os.path.dirname(__file__), "results",f"{self.group_id}", "csv")
+        self.log_path = os.path.join(os.path.dirname(__file__), "results","simplenet", f"{self.group_id}", "csv")
         if not os.path.exists(self.log_path):
             os.makedirs(self.log_path)
         self.latences_filename = f'latences_{self.group_id}_{self.time_stamp}.csv'
-        self.acc_filename = f'acc_{self.group_id}_{self.time_stamp}.csv'
+        # self.acc_filename = f'acc_{self.group_id}_{self.time_stamp}.csv'acc_filename
         state_dict = {}
-        training_data = self.train_dataloader()
+        # training_data = self.train_dataloader()
         test_data = self.test_dataloader()
         
         ckpt_path = os.path.join(self.ckpt_dir, "ckpt.pth")
@@ -284,10 +283,98 @@ class SimpleNet(torch.nn.Module):
                 pd_run_times = pd.concat([pd_run_times_, pd_results], axis=1)
                 pd_run_times.to_csv(file_path)
 
+                try:
+                    device = next(self.backbone.parameters()).device
+                    summary_of_backbone = summary(self.backbone, (1, 3, self.load_size, self.load_size), verbose = 0, device=device)
+                    estimated_total_size = (summary_of_backbone.total_input + summary_of_backbone.total_output_bytes + summary_of_backbone.total_param_bytes) / 1e6 # in MB
+                    number_of_mult_adds = summary_of_backbone.total_mult_adds / 1e6 # in M
+                except:
+                    estimated_total_size = 0.0
+                    number_of_mult_adds = 0.0
+
+                opt_dict = {
+                    'device': self.device,
+                    'input_shape': self.input_shape,
+                    'backbone_id': self.backbone_id,
+                    'layers_to_extract_from': self.layers_to_extract_from,
+                    'quantize_qint8': self.quantize_qint8,
+                    'calibration_dataset': self.calibration_dataset,
+                    'num_images_calib': self.num_images_calib,
+                    'meta_epochs': self.meta_epochs,
+                    'gan_epochs': self.gan_epochs,
+                    'dsc_lr': self.dsc_lr,
+                    'proj_lr': self.proj_lr,
+                    'dsc_layers': self.dsc_layers,
+                    'dsc_hidden': self.dsc_hidden,
+                    'dsc_margin': self.dsc_margin,
+                    'noise_std': self.noise_std,
+                    'mix_noise': self.mix_noise,
+                    'pre_proj': self.pre_proj,
+                    'proj_layer_type': self.proj_layer_type,
+                    'top_k': self.top_k,
+                    'batch_size': self.batch_size,
+                    'batch_size_test': self.batch_size_test,
+                    'pretrain_embed_dimensions': self.pretrain_embed_dimensions,
+                    'target_embed_dimensions': self.target_embed_dimensions,
+                    'patch_size': self.patch_size,
+                    'patch_stride': self.patch_stride,
+                    'embedding_size': self.embedding_size,
+                    'adapted_score_calc': self.adapted_score_calc,
+                    'category_wise_statistics': self.category_wise_statistics,
+                    'load_size': self.load_size,
+                    'input_size': self.input_size,
+                    'category': self.category,
+                    'dataset_path': self.dataset_path,
+                    'time_stamp': self.time_stamp,
+                    'group_id': self.group_id,
+                    'cpu_arch': self.cpu_arch,
+                    'num_images_calib': self.num_images_calib,
+                    'calibration_dataset': self.calibration_dataset,
+                    'quantize_qint8': self.quantize_qint8,
+                    'only_img_lvl': self.only_img_lvl,
+                    'measure_inference': self.measure_inference,
+                    'number_of_reps': self.number_of_reps,
+                    'warm_up_reps': self.warm_up_reps,
+                    'model_dir': self.model_dir,
+                    'ckpt_dir': self.ckpt_dir,
+                    'backbone_storage_[MB]': estimated_total_size,
+                    'backbone_mult_adds_[M]': number_of_mult_adds,
+                    'feature_extraction_[ms]': pd_run_times['#1 feature extraction cpu'].mean() if self.measure_inference else 0.0,
+                    'embedding_of_features_[ms]': pd_run_times['#3 embedding of features cpu'].mean() if self.measure_inference else 0.0,
+                    'calc_distances_[ms]': pd_run_times['#5 score patches cpu'].mean() if self.measure_inference else 0.0,
+                    'calc_scores_[ms]': pd_run_times['#7 img lvl score cpu'].mean() if self.measure_inference else 0.0,
+                    'total_time_[ms]': pd_run_times['#11 whole process cpu'].mean() if self.measure_inference else 0.0,
+                    'img_auc_[%]': auroc                
+                    }
+                file_path = os.path.join(self.log_path, f'summary_{self.group_id}.csv')
+                if os.path.exists(file_path):
+                    pd_sum = pd.read_csv(file_path, index_col=0)
+                    pd_sum_current = pd.Series(opt_dict).to_frame(self.category)#, index='category')
+                    pd_sum = pd.concat([pd_sum, pd_sum_current], axis=1)
+                else:
+                    # pd_sum = pd.DataFrame({'category': self.category,'img_acc': img_auc, 'adapted_score_calc': str(self.adapted_score_calc), 'pooling_strategy': str(self.pooling_strategy)}, index='category')
+                    pd_sum = pd.Series(opt_dict).to_frame(self.category)
+                pd_sum.to_csv(file_path)
+
             return auroc, full_pixel_auroc, anomaly_pixel_auroc
-    
+
+        else:
+            print('No checkpoint found. Starting training.')
+
+    def train(self):
+        self.set_model_dir()
+
+        self.log_path = os.path.join(os.path.dirname(__file__), "results","simplenet", f"{self.group_id}", "csv")
+        if not os.path.exists(self.log_path):
+            os.makedirs(self.log_path)
+        self.latences_filename = f'latences_{self.group_id}_{self.time_stamp}.csv'
+        state_dict = {}
+        training_data = self.train_dataloader()
+        test_data = self.test_dataloader()
+        
+        ckpt_path = os.path.join(self.ckpt_dir, "ckpt.pth")
+        
         def update_state_dict():
-            
             state_dict["discriminator"] = OrderedDict({
                 k:v.detach().cpu() 
                 for k, v in self.discriminator.state_dict().items()})
@@ -693,20 +780,20 @@ if __name__ == "__main__":
     model = SimpleNet(device)
     number_of_samples = [1]#, 10, 100, 1000, 10000]
     dataset_type = ['random']#, 'imagenet']
-    model.category = 'pill'
-    model.meta_epochs = 2
+    model.category = 'cable'
+    model.meta_epochs = 40
     model.measure_inference
     for dataset in dataset_type:
         for no_samples in number_of_samples:
             model.num_images_calib = no_samples
             model.calibration_dataset = dataset
-            model.run_id = f'calibration_dataset_{dataset}_{no_samples}'
+            model.group_id = f'test_2908_2'
             model.measure_inference = False
-            print('Training...\n\n')
+            print('\nTraining...\n')
             model.train()#model.train_dataloader(), model.test_dataloader())
-            print('Testing...\n\n')
+            print('\nTesting...\n')
             model.measure_inference = True
-            model.train() # equal to test! Model is already trained, so this model is loaded and the inference is done directly
+            model.test() # equal to test! Model is already trained, so this model is loaded and the inference is done directly
     # model.predict(model.test_d
     
 

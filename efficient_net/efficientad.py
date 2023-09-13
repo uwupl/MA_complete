@@ -10,18 +10,28 @@ import itertools
 import os
 import random
 from tqdm import tqdm
-from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
-    ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
+from time import perf_counter
+if __name__ == '__main__':
+    import sys
+    sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
+    from path_definitions import MVTEC_DIR
+    from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
+        ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
+else:
+    from .common import get_autoencoder, get_pdn_small, get_pdn_medium, \
+        ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 from sklearn.metrics import roc_auc_score
+# 
+# MVTEC_DIR = r'/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/'
 
 def get_argparse():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dataset', default='mvtec_ad',
                         choices=['mvtec_ad', 'mvtec_loco'])
-    parser.add_argument('-s', '--subdataset', default='bottle',
+    parser.add_argument('-s', '--subdataset', default='own',
                         help='One of 15 sub-datasets of Mvtec AD or 5' +
                              'sub-datasets of Mvtec LOCO')
-    parser.add_argument('-o', '--output_dir', default='output/1')
+    parser.add_argument('-o', '--output_dir', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad')
     parser.add_argument('-m', '--model_size', default='small',
                         choices=['small', 'medium'])
     parser.add_argument('-w', '--weights', default='models/teacher_small.pth')
@@ -31,7 +41,7 @@ def get_argparse():
                              'pretraining penalty. Or see README.md to' +
                              'download ImageNet and set to ImageNet path')
     parser.add_argument('-a', '--mvtec_ad_path',
-                        default='./mvtec_anomaly_detection',
+                        default=MVTEC_DIR,
                         help='Downloaded Mvtec AD dataset')
     parser.add_argument('-b', '--mvtec_loco_path',
                         default='./mvtec_loco_anomaly_detection',
@@ -42,6 +52,7 @@ def get_argparse():
 # constants
 seed = 42
 on_gpu = torch.cuda.is_available()
+on_gpu_init = on_gpu#.copy()
 out_channels = 384
 image_size = 256
 
@@ -83,8 +94,9 @@ def main():
                                     config.dataset, config.subdataset)
     test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
                                    config.dataset, config.subdataset, 'test')
-    os.makedirs(train_output_dir)
-    os.makedirs(test_output_dir)
+    if not os.path.exists(train_output_dir) and not os.path.exists(test_output_dir):
+        os.makedirs(train_output_dir)
+        os.makedirs(test_output_dir)
 
     # load data
     full_train_set = ImageFolderWithoutTarget(
@@ -96,7 +108,7 @@ def main():
         # mvtec dataset paper recommend 10% validation set
         train_size = int(0.9 * len(full_train_set))
         validation_size = len(full_train_set) - train_size
-        rng = torch.Generator().manual_seed(seed)
+        rng = torch.Generator().manual_seed(seed) # random number generator
         train_set, validation_set = torch.utils.data.random_split(full_train_set,
                                                            [train_size,
                                                             validation_size],
@@ -156,7 +168,7 @@ def main():
         student.cuda()
         autoencoder.cuda()
 
-    teacher_mean, teacher_std = teacher_normalization(teacher, train_loader)
+    teacher_mean, teacher_std = teacher_normalization(teacher, train_loader) # TODO: check what exactly is done here
 
     optimizer = torch.optim.Adam(itertools.chain(student.parameters(),
                                                  autoencoder.parameters()),
@@ -166,18 +178,23 @@ def main():
     tqdm_obj = tqdm(range(config.train_steps))
     for iteration, (image_st, image_ae), image_penalty in zip(
             tqdm_obj, train_loader_infinite, penalty_loader_infinite):
-        if on_gpu:
+        if on_gpu_init:
             image_st = image_st.cuda()
             image_ae = image_ae.cuda()
             if image_penalty is not None:
                 image_penalty = image_penalty.cuda()
+            teacher = teacher.cuda()
+            student = student.cuda()
+            autoencoder = autoencoder.cuda()    
+            
+        # compute loss
         with torch.no_grad():
             teacher_output_st = teacher(image_st)
-            teacher_output_st = (teacher_output_st - teacher_mean) / teacher_std
-        student_output_st = student(image_st)[:, :out_channels]
-        distance_st = (teacher_output_st - student_output_st) ** 2
-        d_hard = torch.quantile(distance_st, q=0.999)
-        loss_hard = torch.mean(distance_st[distance_st >= d_hard])
+            teacher_output_st = (teacher_output_st - teacher_mean) / teacher_std # normalized output of teacher --> TODO: What is the teacher?
+        student_output_st = student(image_st)[:, :out_channels] # take the first half of channels
+        distance_st = (teacher_output_st - student_output_st) ** 2 # compute the distance between teacher and student
+        d_hard = torch.quantile(distance_st, q=0.999) # compute threshold. This is done in order to avoid the model to learn insignificant differences
+        loss_hard = torch.mean(distance_st[distance_st >= d_hard]) # take only the values above the threshold and compute the mean
 
         if image_penalty is not None:
             student_output_penalty = student(image_penalty)[:, :out_channels]
@@ -186,17 +203,17 @@ def main():
         else:
             loss_st = loss_hard
 
-        ae_output = autoencoder(image_ae)
+        ae_output = autoencoder(image_ae) 
         with torch.no_grad():
             teacher_output_ae = teacher(image_ae)
             teacher_output_ae = (teacher_output_ae - teacher_mean) / teacher_std
-        student_output_ae = student(image_ae)[:, out_channels:]
-        distance_ae = (teacher_output_ae - ae_output)**2
+        student_output_ae = student(image_ae)[:, out_channels:] # take the second half of channels
+        distance_ae = (teacher_output_ae - ae_output)**2 # compute the distance between 
         distance_stae = (ae_output - student_output_ae)**2
         loss_ae = torch.mean(distance_ae)
         loss_stae = torch.mean(distance_stae)
         loss_total = loss_st + loss_ae + loss_stae
-
+        # optimizer step
         optimizer.zero_grad()
         loss_total.backward()
         optimizer.step()
@@ -206,7 +223,7 @@ def main():
             tqdm_obj.set_description(
                 "Current loss: {:.4f}  ".format(loss_total.item()))
 
-        if iteration % 1000 == 0:
+        if iteration % 10000 == 0:
             torch.save(teacher, os.path.join(train_output_dir,
                                              'teacher_tmp.pth'))
             torch.save(student, os.path.join(train_output_dir,
@@ -219,20 +236,35 @@ def main():
             teacher.eval()
             student.eval()
             autoencoder.eval()
-
-            q_st_start, q_st_end, q_ae_start, q_ae_end = map_normalization(
+            
+            # quantize model
+            st = perf_counter()
+            print('Quantizing models...')
+            teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder)
+            print(f'Quantization took {perf_counter() - st} seconds')
+            
+            q_st_start, q_st_end, q_ae_start, q_ae_end = map_normalization( # only done with non quantized model
                 validation_loader=validation_loader, teacher=teacher,
                 student=student, autoencoder=autoencoder,
                 teacher_mean=teacher_mean, teacher_std=teacher_std,
                 desc='Intermediate map normalization')
+            # non quantized model
             auc = test(
                 test_set=test_set, teacher=teacher, student=student,
                 autoencoder=autoencoder, teacher_mean=teacher_mean,
                 teacher_std=teacher_std, q_st_start=q_st_start,
                 q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
                 test_output_dir=None, desc='Intermediate inference')
-            print('Intermediate image auc: {:.4f}'.format(auc))
-
+            print('Intermediate image auc - non quantized: {:.4f}'.format(auc))
+            # quantized model
+            auc_q = test(
+                test_set=test_set, teacher=teacher_q, student=student_q,
+                autoencoder=autoencoder_q, teacher_mean=teacher_mean,
+                teacher_std=teacher_std, q_st_start=q_st_start,
+                q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+                test_output_dir=None, desc='Intermediate inference',
+                q_flag=True)
+            print('Intermediate image auc - quantized: {:.4f}'.format(auc_q))
             # teacher frozen
             teacher.eval()
             student.train()
@@ -251,6 +283,7 @@ def main():
         validation_loader=validation_loader, teacher=teacher, student=student,
         autoencoder=autoencoder, teacher_mean=teacher_mean,
         teacher_std=teacher_std, desc='Final map normalization')
+    
     auc = test(
         test_set=test_set, teacher=teacher, student=student,
         autoencoder=autoencoder, teacher_mean=teacher_mean,
@@ -259,11 +292,26 @@ def main():
         test_output_dir=test_output_dir, desc='Final inference')
     print('Final image auc: {:.4f}'.format(auc))
 
+    print('Final Quantization...')
+    teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder)
+    print('Final Quantization done.')
+    auc_q = test(
+        test_set=test_set, teacher=teacher_q, student=student_q,
+        autoencoder=autoencoder_q, teacher_mean=teacher_mean,
+        teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
+        q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+        test_output_dir=test_output_dir, desc='Final inference',
+        q_flag=True)
+    
 def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
          q_st_start, q_st_end, q_ae_start, q_ae_end, test_output_dir=None,
-         desc='Running inference'):
+         desc='Running inference', q_flag=False):
     y_true = []
     y_score = []
+    if not q_flag:
+        on_gpu = True if next(student.parameters()).is_cuda else False
+    else:
+        on_gpu = False
     for image, target, path in tqdm(test_set, desc=desc):
         orig_width = image.width
         orig_height = image.height
@@ -300,6 +348,9 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
 def predict(image, teacher, student, autoencoder, teacher_mean, teacher_std,
             q_st_start=None, q_st_end=None, q_ae_start=None, q_ae_end=None):
     teacher_output = teacher(image)
+    device = teacher_output.device
+    teacher_mean = teacher_mean.to(device)
+    teacher_std = teacher_std.to(device)
     teacher_output = (teacher_output - teacher_mean) / teacher_std
     student_output = student(image)
     autoencoder_output = autoencoder(image)
@@ -321,6 +372,7 @@ def map_normalization(validation_loader, teacher, student, autoencoder,
     maps_st = []
     maps_ae = []
     # ignore augmented ae image
+    on_gpu = True if next(student.parameters()).is_cuda else False
     for image, _ in tqdm(validation_loader, desc=desc):
         if on_gpu:
             image = image.cuda()
@@ -342,6 +394,7 @@ def map_normalization(validation_loader, teacher, student, autoencoder,
 def teacher_normalization(teacher, train_loader):
 
     mean_outputs = []
+    on_gpu = True if next(teacher.parameters()).is_cuda else False
     for train_image, _ in tqdm(train_loader, desc='Computing mean of features'):
         if on_gpu:
             train_image = train_image.cuda()
@@ -365,5 +418,75 @@ def teacher_normalization(teacher, train_loader):
 
     return channel_mean, channel_std
 
+
+### Quantization section ###
+
+class RandomImageDataset(torch.utils.data.Dataset):
+    def __init__(self, num_images, transform=None, image_size=224):
+        self.num_images = num_images
+        self.transform = transform
+        self.image_size = image_size
+
+    def __len__(self):
+        return self.num_images
+
+    def __getitem__(self, idx):
+        # Generate a random image
+        image = np.random.randint(0, 256, size=(self.image_size, self.image_size, 3), dtype=np.uint8)
+
+        # Convert numpy array to PIL image
+        image = transforms.ToPILImage()(image)
+
+        # Apply transformations if provided
+        if self.transform:
+            image = self.transform(image)
+
+        return image, 0, 0, 0, 0
+
+def quantize_model(teacher, student, autoencoder):
+    import torch.quantization as tq
+    import torch.ao.quantization as taoq
+    
+    fuse_list_teacher_student = [('0','1'),('3','4'),('6','7')]
+    fuse_list_autoencoder = [('0','1'),('2','3'),('4','5'),('6','7'),('8','9'),('12','13'),('16','17'),('20','21'),('24','25'),('28','29'),('32','33'),('36','37')]
+    
+    teacher, student, autoencoder = teacher.to('cpu'), student.to('cpu'), autoencoder.to('cpu')
+    
+    teacher, student, autoencoder = tq.fuse_modules(teacher, fuse_list_teacher_student), tq.fuse_modules(student, fuse_list_teacher_student), tq.fuse_modules(autoencoder, fuse_list_autoencoder)   
+    
+    teacher, student, autoencoder = taoq.QuantWrapper(teacher), taoq.QuantWrapper(student), taoq.QuantWrapper(autoencoder)
+    
+    teacher.qconfig = tq.get_default_qconfig('fbgemm')
+    student.qconfig = tq.get_default_qconfig('fbgemm')
+    autoencoder.qconfig = tq.get_default_qconfig('fbgemm')
+    
+    tq.prepare(teacher, inplace=True)
+    tq.prepare(student, inplace=True)
+    tq.prepare(autoencoder, inplace=True)
+    
+    def calibrate_model(model, loader):
+        with torch.inference_mode():
+            for inputs in loader:
+                x, _, _, _, _ = inputs
+                _ = model(x)
+
+    from PIL import Image
+    data_transforms = transforms.Compose([
+                transforms.Resize((256, 256), Image.LANCZOS),
+                transforms.ToTensor(),
+                transforms.CenterCrop(256),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])]) # from imagenet
+    
+    calibrate_model(teacher, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
+    calibrate_model(student, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
+    calibrate_model(autoencoder, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
+    
+    teacher = tq.convert(teacher, inplace=True)
+    student = tq.convert(student, inplace=True)
+    autoencoder = tq.convert(autoencoder, inplace=True)
+    
+    return teacher.eval(), student.eval(), autoencoder.eval()
+    
 if __name__ == '__main__':
     main()

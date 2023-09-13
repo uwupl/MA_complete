@@ -89,6 +89,7 @@ class KNN(NN):
             self.unique_labels = self.train_label.unique()
 
     def predict(self, x):
+        # print('self.k: ', self.k)
         if self.p is None:
             dist = torch.from_numpy(cdist(x, self.train_pts, metric=self.metric))
         elif self.metric == 'mahalanobis':

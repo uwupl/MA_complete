@@ -87,16 +87,17 @@ class MVTecDataset(Dataset):
 
 # for calibration purposes
 class RandomImageDataset(Dataset):
-    def __init__(self, num_images, transform=None):
+    def __init__(self, num_images, transform=None, image_size=224):
         self.num_images = num_images
         self.transform = transform
+        self.image_size = image_size
 
     def __len__(self):
         return self.num_images
 
     def __getitem__(self, idx):
         # Generate a random image
-        image = np.random.randint(0, 256, size=(224, 224, 3), dtype=np.uint8)
+        image = np.random.randint(0, 256, size=(self.image_size, self.image_size, 3), dtype=np.uint8)
 
         # Convert numpy array to PIL image
         image = transforms.ToPILImage()(image)

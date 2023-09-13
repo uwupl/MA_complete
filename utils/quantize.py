@@ -97,6 +97,7 @@ def calibrate_model(model, loader, device=torch.device("cpu:0")):
             # inputs = inputs.to(device)
             # # labels = labels.to(device)
             x, _, _, _, _ = inputs
+            # print(x.shape)
             _ = model(x)
         
 def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, category = 'own', cpu_arch = 'x86', num_images=100, dataset_path = r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/"):
@@ -117,6 +118,7 @@ def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, cat
     
     # fuse model
     fuse_list = generate_fuse_list(fused_model)
+    # print(f'Fuse list: {fuse_list}')
     a = fuse_model(fused_model, fuse_list)
     
     # add quantization layers

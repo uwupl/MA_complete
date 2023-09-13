@@ -77,7 +77,8 @@ def modified_kNN_score_calc_old(score_patches):
 
 # @nb.jit(nopython=True)
 def modified_kNN_score_calc(score_patches, n_next_patches = 5):
-    sum_of_each_patch = np.sum(score_patches,axis=1)
+    # print('score_patches.shape: ', score_patches.shape)s+
+    sum_of_each_patch = np.sum(score_patches, axis = 1)
     threshold_val = 50*np.percentile(sum_of_each_patch, 50)
     non_outlier_patches = np.argwhere(sum_of_each_patch < threshold_val).flatten()#[0]
     if len(non_outlier_patches) < score_patches.shape[0]:
@@ -174,7 +175,7 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
             pd_summary = pd.read_csv(file_path, index_col=0)
             if pd_summary.shape[1] != int(16):
                 # print(k)
-                print(file_path)
+                print('file uncomplete: ', file_path)
                 failed_runs.append(k)
                 correction_number += 1
                 continue
@@ -220,7 +221,11 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
             calc_scores_total = np.vstack((calc_scores_total, calc_scores))
             total_time_total = np.vstack((total_time_total, total_time))
 
-    summary_np = np.zeros((10, len(img_auc_total_mean)))
+    if type(img_auc_total_mean) == np.ndarray:
+        num_runs = img_auc_total_mean.shape[0]
+    else:
+        num_runs = 1
+    summary_np = np.zeros((10, num_runs))
     helper_list = [img_auc_total_mean, img_auc_MVTechAD_total, img_auc_total_own, backbone_storage_total, backbone_flops_total, feature_extraction_total, embedding_of_feature_total, calc_distances_total, calc_scores_total, total_time]
     for i, entry in enumerate(helper_list):
         summary_np[i, :] = entry.flatten()

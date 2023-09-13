@@ -34,9 +34,9 @@ class TestContainer():
                 print('Run ', self.run_no+1, ' of ', self.total_runs, ' started.')
                 st = time.perf_counter()
                 cats = ['carpet','bottle','own', 'cable', 'capsule', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
-                for cat in cats:
+                for k, cat in enumerate(cats):
                     model.category = cat
-                    print('\n\n', cat, '\n\n')
+                    print('\n', f'Category {k+1} of {len(cats)}: ', cat, '\n')
                     if cat == 'own' and not only_accuracy:
                         model.measure_inference = True
                         model.cuda_active_training = True if not only_cpu else False
@@ -138,7 +138,7 @@ def get_default_PatchCoreModel():
     Returns a PatchCore model with default settings.
     '''
     model = PatchCore()
-    model.model_id = 'WRN50'
+    model.backbone_id = 'WRN50'
     model.layers_needed = [2,3]
     model.pooling_strategy = 'default' # nn.AvgPool2d(kernel_size=3, stride=1, padding=1)
     model.exclude_relu = False # relu won't be used for final layer, in order to not lose negative values
