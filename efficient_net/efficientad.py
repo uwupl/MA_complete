@@ -11,6 +11,9 @@ import os
 import random
 from tqdm import tqdm
 from time import perf_counter
+import json
+
+
 if __name__ == '__main__':
     import sys
     sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
@@ -34,7 +37,7 @@ def get_argparse():
     parser.add_argument('-o', '--output_dir', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad')
     parser.add_argument('-m', '--model_size', default='small',
                         choices=['small', 'medium'])
-    parser.add_argument('-w', '--weights', default='models/teacher_small.pth')
+    parser.add_argument('-w', '--weights', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth')
     parser.add_argument('-i', '--imagenet_train_path',
                         default='none',
                         help='Set to "none" to disable ImageNet' +
@@ -153,7 +156,7 @@ def main():
         teacher = get_pdn_medium(out_channels)
         student = get_pdn_medium(2 * out_channels)
     else:
-        raise Exception()
+        raise Exception('Unknown config.model_size')
     state_dict = torch.load(config.weights, map_location='cpu')
     teacher.load_state_dict(state_dict)
     autoencoder = get_autoencoder(out_channels)
@@ -231,6 +234,19 @@ def main():
             torch.save(autoencoder, os.path.join(train_output_dir,
                                                  'autoencoder_tmp.pth'))
 
+            print('Quantizing models...')
+            st = perf_counter()
+            teacher_q, student_q, autoencoder_q = quantize_model(teacher.eval(), student.eval(), autoencoder.eval())
+            print(f'Quantization took {perf_counter() - st} seconds')
+            
+            torch.save(teacher_q.state_dict(), os.path.join(train_output_dir,
+                                             'teacher_q_tmp.pth'))
+            torch.save(student_q.state_dict(), os.path.join(train_output_dir,
+                                                'student_q_tmp.pth'))
+            torch.save(autoencoder_q.state_dict(), os.path.join(train_output_dir,
+                                                    'autoencoder_q_tmp.pth'))
+            
+                    
         if iteration % 10000 == 0 and iteration > 0:
             # run intermediate evaluation
             teacher.eval()
@@ -239,15 +255,14 @@ def main():
             
             # quantize model
             st = perf_counter()
-            print('Quantizing models...')
-            teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder)
-            print(f'Quantization took {perf_counter() - st} seconds')
             
             q_st_start, q_st_end, q_ae_start, q_ae_end = map_normalization( # only done with non quantized model
                 validation_loader=validation_loader, teacher=teacher,
                 student=student, autoencoder=autoencoder,
                 teacher_mean=teacher_mean, teacher_std=teacher_std,
                 desc='Intermediate map normalization')
+            print(q_st_start, q_st_end, q_ae_start, q_ae_end)
+            
             # non quantized model
             auc = test(
                 test_set=test_set, teacher=teacher, student=student,
@@ -265,6 +280,20 @@ def main():
                 test_output_dir=None, desc='Intermediate inference',
                 q_flag=True)
             print('Intermediate image auc - quantized: {:.4f}'.format(auc_q))
+            
+            # save statistics
+            statistics = {
+                'q_st_start': q_st_start.item(),
+                'q_st_end': q_st_end.item(),
+                'q_ae_start': q_ae_start.item(),
+                'q_ae_end': q_ae_end.item(),
+                'teacher_mean': teacher_mean.cpu().tolist(),
+                'teacher_std': teacher_std.cpu().tolist()
+            }
+            with open(os.path.join(train_output_dir, 'statistics.json'), 'w') as f:
+                json.dump(statistics, f)
+            
+            
             # teacher frozen
             teacher.eval()
             student.train()
@@ -295,6 +324,24 @@ def main():
     print('Final Quantization...')
     teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder)
     print('Final Quantization done.')
+    
+    torch.save(teacher.state_dict(), os.path.join(train_output_dir, 'teacher_final_q.pth'))
+    torch.save(student.state_dict(), os.path.join(train_output_dir, 'student_final_q.pth'))
+    torch.save(autoencoder.state_dict(), os.path.join(train_output_dir,
+                                            'autoencoder_final_q.pth'))
+    
+    statistics = {
+        'q_st_start': q_st_start.float(),
+        'q_st_end': q_st_end.float(),
+        'q_ae_start': q_ae_start.float(),
+        'q_ae_end': q_ae_end.float(),
+        'teacher_mean': teacher_mean.float(),
+        'teacher_std': teacher_std.float()
+    }
+    
+    with open(os.path.join(train_output_dir, 'statistics.json'), 'w') as f:
+        json.dump(statistics, f)
+
     auc_q = test(
         test_set=test_set, teacher=teacher_q, student=student_q,
         autoencoder=autoencoder_q, teacher_mean=teacher_mean,
@@ -349,8 +396,11 @@ def predict(image, teacher, student, autoencoder, teacher_mean, teacher_std,
             q_st_start=None, q_st_end=None, q_ae_start=None, q_ae_end=None):
     teacher_output = teacher(image)
     device = teacher_output.device
-    teacher_mean = teacher_mean.to(device)
-    teacher_std = teacher_std.to(device)
+    teacher_mean, teacher_std = teacher_mean.to(device), teacher_std.to(device)
+    q_st_start = q_st_start.to(device) if q_st_start is not None else None
+    q_st_end = q_st_end.to(device) if q_st_end is not None else None
+    q_ae_start = q_ae_start.to(device) if q_ae_start is not None else None
+    q_ae_end = q_ae_end.to(device) if q_ae_end is not None else None
     teacher_output = (teacher_output - teacher_mean) / teacher_std
     student_output = student(image)
     autoencoder_output = autoencoder(image)
@@ -443,7 +493,7 @@ class RandomImageDataset(torch.utils.data.Dataset):
 
         return image, 0, 0, 0, 0
 
-def quantize_model(teacher, student, autoencoder):
+def quantize_model(teacher, student, autoencoder, calibrate=True):
     import torch.quantization as tq
     import torch.ao.quantization as taoq
     
@@ -464,23 +514,24 @@ def quantize_model(teacher, student, autoencoder):
     tq.prepare(student, inplace=True)
     tq.prepare(autoencoder, inplace=True)
     
-    def calibrate_model(model, loader):
-        with torch.inference_mode():
-            for inputs in loader:
-                x, _, _, _, _ = inputs
-                _ = model(x)
+    if calibrate:
+        def calibrate_model(model, loader):
+            with torch.inference_mode():
+                for inputs in loader:
+                    x, _, _, _, _ = inputs
+                    _ = model(x)
 
-    from PIL import Image
-    data_transforms = transforms.Compose([
-                transforms.Resize((256, 256), Image.LANCZOS),
-                transforms.ToTensor(),
-                transforms.CenterCrop(256),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                    std=[0.229, 0.224, 0.225])]) # from imagenet
-    
-    calibrate_model(teacher, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
-    calibrate_model(student, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
-    calibrate_model(autoencoder, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
+        from PIL import Image
+        data_transforms = transforms.Compose([
+                    transforms.Resize((256, 256), Image.LANCZOS),
+                    transforms.ToTensor(),
+                    transforms.CenterCrop(256),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                        std=[0.229, 0.224, 0.225])]) # from imagenet
+        
+        calibrate_model(teacher, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
+        calibrate_model(student, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
+        calibrate_model(autoencoder, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
     
     teacher = tq.convert(teacher, inplace=True)
     student = tq.convert(student, inplace=True)
