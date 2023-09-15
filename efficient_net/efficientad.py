@@ -13,17 +13,16 @@ from tqdm import tqdm
 from time import perf_counter
 import json
 
-
-if __name__ == '__main__':
-    import sys
-    sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
-    from path_definitions import MVTEC_DIR
-    from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
-        ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
-else:
-    from .common import get_autoencoder, get_pdn_small, get_pdn_medium, \
-        ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 from sklearn.metrics import roc_auc_score
+import sys
+sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
+from path_definitions import MVTEC_DIR
+from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
+    ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
+# else:
+#     from .common import get_autoencoder, get_pdn_small, get_pdn_medium, \
+#         ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
+# from sklearn.metrics import roc_auc_score
 # 
 # MVTEC_DIR = r'/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/'
 
@@ -31,7 +30,7 @@ def get_argparse():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dataset', default='mvtec_ad',
                         choices=['mvtec_ad', 'mvtec_loco'])
-    parser.add_argument('-s', '--subdataset', default='own',
+    parser.add_argument('-s', '--subdataset', default='screw',
                         help='One of 15 sub-datasets of Mvtec AD or 5' +
                              'sub-datasets of Mvtec LOCO')
     parser.add_argument('-o', '--output_dir', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad')
@@ -49,7 +48,7 @@ def get_argparse():
     parser.add_argument('-b', '--mvtec_loco_path',
                         default='./mvtec_loco_anomaly_detection',
                         help='Downloaded Mvtec LOCO dataset')
-    parser.add_argument('-t', '--train_steps', type=int, default=70000)
+    parser.add_argument('-t', '--train_steps', type=int, default=5000)
     return parser.parse_args()
 
 # constants
@@ -58,6 +57,7 @@ on_gpu = torch.cuda.is_available()
 on_gpu_init = on_gpu#.copy()
 out_channels = 384
 image_size = 256
+test_interval = 2500
 
 # data loading
 default_transform = transforms.Compose([
@@ -225,130 +225,13 @@ def main():
         if iteration % 10 == 0:
             tqdm_obj.set_description(
                 "Current loss: {:.4f}  ".format(loss_total.item()))
-
-        if iteration % 10000 == 0:
-            torch.save(teacher, os.path.join(train_output_dir,
-                                             'teacher_tmp.pth'))
-            torch.save(student, os.path.join(train_output_dir,
-                                             'student_tmp.pth'))
-            torch.save(autoencoder, os.path.join(train_output_dir,
-                                                 'autoencoder_tmp.pth'))
-
-            print('Quantizing models...')
-            st = perf_counter()
-            teacher_q, student_q, autoencoder_q = quantize_model(teacher.eval(), student.eval(), autoencoder.eval())
-            print(f'Quantization took {perf_counter() - st} seconds')
-            
-            torch.save(teacher_q.state_dict(), os.path.join(train_output_dir,
-                                             'teacher_q_tmp.pth'))
-            torch.save(student_q.state_dict(), os.path.join(train_output_dir,
-                                                'student_q_tmp.pth'))
-            torch.save(autoencoder_q.state_dict(), os.path.join(train_output_dir,
-                                                    'autoencoder_q_tmp.pth'))
-            
-                    
-        if iteration % 10000 == 0 and iteration > 0:
-            # run intermediate evaluation
-            teacher.eval()
-            student.eval()
-            autoencoder.eval()
-            
-            # quantize model
-            st = perf_counter()
-            
-            q_st_start, q_st_end, q_ae_start, q_ae_end = map_normalization( # only done with non quantized model
-                validation_loader=validation_loader, teacher=teacher,
-                student=student, autoencoder=autoencoder,
-                teacher_mean=teacher_mean, teacher_std=teacher_std,
-                desc='Intermediate map normalization')
-            print(q_st_start, q_st_end, q_ae_start, q_ae_end)
-            
-            # non quantized model
-            auc = test(
-                test_set=test_set, teacher=teacher, student=student,
-                autoencoder=autoencoder, teacher_mean=teacher_mean,
-                teacher_std=teacher_std, q_st_start=q_st_start,
-                q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
-                test_output_dir=None, desc='Intermediate inference')
-            print('Intermediate image auc - non quantized: {:.4f}'.format(auc))
-            # quantized model
-            auc_q = test(
-                test_set=test_set, teacher=teacher_q, student=student_q,
-                autoencoder=autoencoder_q, teacher_mean=teacher_mean,
-                teacher_std=teacher_std, q_st_start=q_st_start,
-                q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
-                test_output_dir=None, desc='Intermediate inference',
-                q_flag=True)
-            print('Intermediate image auc - quantized: {:.4f}'.format(auc_q))
-            
-            # save statistics
-            statistics = {
-                'q_st_start': q_st_start.item(),
-                'q_st_end': q_st_end.item(),
-                'q_ae_start': q_ae_start.item(),
-                'q_ae_end': q_ae_end.item(),
-                'teacher_mean': teacher_mean.cpu().tolist(),
-                'teacher_std': teacher_std.cpu().tolist()
-            }
-            with open(os.path.join(train_output_dir, 'statistics.json'), 'w') as f:
-                json.dump(statistics, f)
-            
-            
-            # teacher frozen
-            teacher.eval()
-            student.train()
-            autoencoder.train()
-
-    teacher.eval()
-    student.eval()
-    autoencoder.eval()
-
-    torch.save(teacher, os.path.join(train_output_dir, 'teacher_final.pth'))
-    torch.save(student, os.path.join(train_output_dir, 'student_final.pth'))
-    torch.save(autoencoder, os.path.join(train_output_dir,
-                                         'autoencoder_final.pth'))
-
-    q_st_start, q_st_end, q_ae_start, q_ae_end = map_normalization(
-        validation_loader=validation_loader, teacher=teacher, student=student,
-        autoencoder=autoencoder, teacher_mean=teacher_mean,
-        teacher_std=teacher_std, desc='Final map normalization')
-    
-    auc = test(
-        test_set=test_set, teacher=teacher, student=student,
-        autoencoder=autoencoder, teacher_mean=teacher_mean,
-        teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
-        q_ae_start=q_ae_start, q_ae_end=q_ae_end,
-        test_output_dir=test_output_dir, desc='Final inference')
-    print('Final image auc: {:.4f}'.format(auc))
-
-    print('Final Quantization...')
-    teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder)
-    print('Final Quantization done.')
-    
-    torch.save(teacher.state_dict(), os.path.join(train_output_dir, 'teacher_final_q.pth'))
-    torch.save(student.state_dict(), os.path.join(train_output_dir, 'student_final_q.pth'))
-    torch.save(autoencoder.state_dict(), os.path.join(train_output_dir,
-                                            'autoencoder_final_q.pth'))
-    
-    statistics = {
-        'q_st_start': q_st_start.float(),
-        'q_st_end': q_st_end.float(),
-        'q_ae_start': q_ae_start.float(),
-        'q_ae_end': q_ae_end.float(),
-        'teacher_mean': teacher_mean.float(),
-        'teacher_std': teacher_std.float()
-    }
-    
-    with open(os.path.join(train_output_dir, 'statistics.json'), 'w') as f:
-        json.dump(statistics, f)
-
-    auc_q = test(
-        test_set=test_set, teacher=teacher_q, student=student_q,
-        autoencoder=autoencoder_q, teacher_mean=teacher_mean,
-        teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
-        q_ae_start=q_ae_start, q_ae_end=q_ae_end,
-        test_output_dir=test_output_dir, desc='Final inference',
-        q_flag=True)
+        
+        # intermediate evaluation
+        if iteration % test_interval == 0 and iteration > 0:
+            calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp')
+    # final evaluation
+    calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'final')
+        
     
 def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
          q_st_start, q_st_end, q_ae_start, q_ae_end, test_output_dir=None,
@@ -418,11 +301,14 @@ def predict(image, teacher, student, autoencoder, teacher_mean, teacher_std,
 
 @torch.no_grad()
 def map_normalization(validation_loader, teacher, student, autoencoder,
-                      teacher_mean, teacher_std, desc='Map normalization'):
+                      teacher_mean, teacher_std, desc='Map normalization', q_flag=False):
     maps_st = []
     maps_ae = []
     # ignore augmented ae image
-    on_gpu = True if next(student.parameters()).is_cuda else False
+    if not q_flag:
+        on_gpu = True if next(student.parameters()).is_cuda else False
+    else:
+        on_gpu = False
     for image, _ in tqdm(validation_loader, desc=desc):
         if on_gpu:
             image = image.cuda()
@@ -441,10 +327,13 @@ def map_normalization(validation_loader, teacher, student, autoencoder,
     return q_st_start, q_st_end, q_ae_start, q_ae_end
 
 @torch.no_grad()
-def teacher_normalization(teacher, train_loader):
+def teacher_normalization(teacher, train_loader, q_flag=False):
 
     mean_outputs = []
-    on_gpu = True if next(teacher.parameters()).is_cuda else False
+    if not q_flag:
+        on_gpu = True if next(teacher.parameters()).is_cuda else False
+    else:
+        on_gpu = False
     for train_image, _ in tqdm(train_loader, desc='Computing mean of features'):
         if on_gpu:
             train_image = train_image.cuda()
@@ -493,7 +382,7 @@ class RandomImageDataset(torch.utils.data.Dataset):
 
         return image, 0, 0, 0, 0
 
-def quantize_model(teacher, student, autoencoder, calibrate=True):
+def quantize_model(teacher, student, autoencoder, calibration_loader=None):
     import torch.quantization as tq
     import torch.ao.quantization as taoq
     
@@ -514,30 +403,146 @@ def quantize_model(teacher, student, autoencoder, calibrate=True):
     tq.prepare(student, inplace=True)
     tq.prepare(autoencoder, inplace=True)
     
-    if calibrate:
-        def calibrate_model(model, loader):
-            with torch.inference_mode():
-                for inputs in loader:
-                    x, _, _, _, _ = inputs
-                    _ = model(x)
+    if calibration_loader is not None:
+        def calibrate_model(model, loader, calib_item_idx=[0]):
+            for idx in calib_item_idx:
+                with torch.inference_mode():
+                    for inputs in loader:
+                        x = inputs[idx]
+                        _ = model(x)
 
-        from PIL import Image
-        data_transforms = transforms.Compose([
-                    transforms.Resize((256, 256), Image.LANCZOS),
-                    transforms.ToTensor(),
-                    transforms.CenterCrop(256),
-                    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                        std=[0.229, 0.224, 0.225])]) # from imagenet
+        # from PIL import Image
+        # data_transforms = transforms.Compose([
+        #             transforms.Resize((256, 256), Image.LANCZOS),
+        #             transforms.ToTensor(),
+        #             transforms.CenterCrop(256),
+        #             transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                                 std=[0.229, 0.224, 0.225])]) # from imagenet
         
-        calibrate_model(teacher, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
-        calibrate_model(student, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
-        calibrate_model(autoencoder, DataLoader(RandomImageDataset(100, transform=data_transforms, image_size=256)))
+        calibrate_model(teacher, calibration_loader, [0])
+        calibrate_model(student, calibration_loader, [0,1])
+        calibrate_model(autoencoder, calibration_loader, [1])
     
     teacher = tq.convert(teacher, inplace=True)
     student = tq.convert(student, inplace=True)
     autoencoder = tq.convert(autoencoder, inplace=True)
     
     return teacher.eval(), student.eval(), autoencoder.eval()
+
+@torch.no_grad()  
+def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp'):
+
+    # run intermediate evaluation
+    teacher.eval()
+    student.eval()
+    autoencoder.eval()
     
+    torch.save(teacher, os.path.join(train_output_dir,
+                                        f'teacher_{phase}.pth'))
+    torch.save(student, os.path.join(train_output_dir,
+                                        f'student_{phase}.pth'))
+    torch.save(autoencoder, os.path.join(train_output_dir,
+                                        f'autoencoder_{phase}.pth'))
+
+    print('Quantizing models...')
+    st = perf_counter()
+    teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder, calibration_loader=validation_loader)
+    print(f'Quantization took {round(perf_counter() - st,2)} seconds')
+    
+    teacher_q_mean, teacher_q_std = teacher_normalization(teacher_q, train_loader, q_flag=True)
+
+    torch.save(teacher_q.state_dict(), os.path.join(train_output_dir,
+                                        f'teacher_q_{phase}.pth'))
+    torch.save(student_q.state_dict(), os.path.join(train_output_dir,
+                                        f'student_q_{phase}.pth'))
+    torch.save(autoencoder_q.state_dict(), os.path.join(train_output_dir,
+                                        f'autoencoder_q_{phase}.pth'))
+    
+    q_st_start, q_st_end, q_ae_start, q_ae_end = map_normalization( # only done with non quantized model
+        validation_loader=validation_loader, teacher=teacher,
+        student=student, autoencoder=autoencoder,
+        teacher_mean=teacher_mean, teacher_std=teacher_std,
+        desc='Intermediate map normalization')
+    
+    q_st_start_q, q_st_end_q, q_ae_start_q, q_ae_end_q = map_normalization( # only done with quantized model
+        validation_loader=validation_loader, teacher=teacher_q,
+        student=student_q, autoencoder=autoencoder_q,
+        teacher_mean=teacher_q_mean, teacher_std=teacher_q_std,
+        desc='Intermediate map normalization', q_flag=True)
+
+    print(q_st_start, q_st_end, q_ae_start, q_ae_end)
+    print(q_st_start_q, q_st_end_q, q_ae_start_q, q_ae_end_q)
+    # non quantized model
+    auc = test(
+        test_set=test_set, teacher=teacher, student=student,
+        autoencoder=autoencoder, teacher_mean=teacher_mean,
+        teacher_std=teacher_std, q_st_start=q_st_start,
+        q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+        test_output_dir=None, desc='Intermediate inference')
+    print('Intermediate image auc - non quantized: {:.4f}'.format(auc))
+    # quantized model
+    auc_q_1 = test(
+        test_set=test_set, teacher=teacher_q, student=student_q,
+        autoencoder=autoencoder_q, teacher_mean=teacher_mean,
+        teacher_std=teacher_std, q_st_start=q_st_start,
+        q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+        test_output_dir=None, desc='Intermediate inference',
+        q_flag=True)
+    print('Intermediate image auc - quantized (just models): {:.4f}'.format(auc_q_1))
+
+    auc_q_2 = test(
+        test_set=test_set, teacher=teacher_q, student=student_q,
+        autoencoder=autoencoder_q, teacher_mean=teacher_q_mean,
+        teacher_std=teacher_q_std, q_st_start=q_st_start_q,
+        q_st_end=q_st_end_q, q_ae_start=q_ae_start_q,
+        q_ae_end=q_ae_end_q, test_output_dir=None,
+        desc='Intermediate inference', q_flag=True)
+    print('Intermediate image auc - quantized (with map norm and teacher mean/std): {:.4f}'.format(auc_q_2))
+
+    auc_q_3 = test(
+        test_set=test_set, teacher=teacher_q, student=student_q,
+        autoencoder=autoencoder_q, teacher_mean=teacher_q_mean,
+        teacher_std=teacher_q_std, q_st_start=q_st_start,
+        q_st_end=q_st_end, q_ae_start=q_ae_start,
+        q_ae_end=q_ae_end, test_output_dir=None,
+        desc='Intermediate inference', q_flag=True)
+    print('Intermediate image auc - quantized (with teacher mean/std): {:.4f}'.format(auc_q_3))
+
+    auc_q_4 = test(
+        test_set=test_set, teacher=teacher_q, student=student_q,
+        autoencoder=autoencoder_q, teacher_mean=teacher_mean,
+        teacher_std=teacher_std, q_st_start=q_st_start_q,
+        q_st_end=q_st_end_q, q_ae_start=q_ae_start_q,
+        q_ae_end=q_ae_end_q, test_output_dir=None,
+        desc='Intermediate inference', q_flag=True)
+    print('Intermediate image auc - quantized (with map norm): {:.4f}'.format(auc_q_4))
+    
+    # save statistics
+    statistics = {
+        'q_st_start': q_st_start.item(),
+        'q_st_end': q_st_end.item(),
+        'q_ae_start': q_ae_start.item(),
+        'q_ae_end': q_ae_end.item(),
+        'q_st_start_q': q_st_start_q.item(),
+        'q_st_end_q': q_st_end_q.item(),
+        'q_ae_start_q': q_ae_start_q.item(),
+        'q_ae_end_q': q_ae_end_q.item(),
+        'teacher_mean': teacher_mean.cpu().tolist(),
+        'teacher_std': teacher_std.cpu().tolist(),
+        'teacher_q_mean': teacher_q_mean.cpu().tolist(),
+        'teacher_q_std': teacher_q_std.cpu().tolist(),
+        'auc': auc,
+        'auc_q': auc_q_3
+    }
+    with open(os.path.join(train_output_dir, f'statistics_{phase}.json'), 'w') as f:
+        json.dump(statistics, f)
+
+    # teacher frozen
+            
+
+
 if __name__ == '__main__':
     main()
+
+
+
