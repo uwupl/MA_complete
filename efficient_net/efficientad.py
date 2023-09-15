@@ -26,38 +26,52 @@ from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
 # 
 # MVTEC_DIR = r'/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/'
 
-def get_argparse():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--dataset', default='mvtec_ad',
-                        choices=['mvtec_ad', 'mvtec_loco'])
-    parser.add_argument('-s', '--subdataset', default='screw',
-                        help='One of 15 sub-datasets of Mvtec AD or 5' +
-                             'sub-datasets of Mvtec LOCO')
-    parser.add_argument('-o', '--output_dir', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad')
-    parser.add_argument('-m', '--model_size', default='small',
-                        choices=['small', 'medium'])
-    parser.add_argument('-w', '--weights', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth')
-    parser.add_argument('-i', '--imagenet_train_path',
-                        default='none',
-                        help='Set to "none" to disable ImageNet' +
-                             'pretraining penalty. Or see README.md to' +
-                             'download ImageNet and set to ImageNet path')
-    parser.add_argument('-a', '--mvtec_ad_path',
-                        default=MVTEC_DIR,
-                        help='Downloaded Mvtec AD dataset')
-    parser.add_argument('-b', '--mvtec_loco_path',
-                        default='./mvtec_loco_anomaly_detection',
-                        help='Downloaded Mvtec LOCO dataset')
-    parser.add_argument('-t', '--train_steps', type=int, default=5000)
-    return parser.parse_args()
+# def get_argparse():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('-d', '--dataset', default='mvtec_ad',
+#                         choices=['mvtec_ad', 'mvtec_loco'])
+#     parser.add_argument('-s', '--subdataset', default='screw',
+#                         help='One of 15 sub-datasets of Mvtec AD or 5' +
+#                              'sub-datasets of Mvtec LOCO')
+#     parser.add_argument('-o', '--output_dir', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad')
+#     parser.add_argument('-m', '--model_size', default='small',
+#                         choices=['small', 'medium'])
+#     parser.add_argument('-w', '--weights', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth')
+#     parser.add_argument('-i', '--imagenet_train_path',
+#                         default='none',
+#                         help='Set to "none" to disable ImageNet' +
+#                              'pretraining penalty. Or see README.md to' +
+#                              'download ImageNet and set to ImageNet path')
+#     parser.add_argument('-a', '--mvtec_ad_path',
+#                         default=MVTEC_DIR,
+#                         help='Downloaded Mvtec AD dataset')
+#     parser.add_argument('-b', '--mvtec_loco_path',
+#                         default='./mvtec_loco_anomaly_detection',
+#                         help='Downloaded Mvtec LOCO dataset')
+#     parser.add_argument('-t', '--train_steps', type=int, default=5000)
+#     return parser.parse_args()
+
+
+class config_helper():
+    def __init__(self, dataset, subdataset, output_dir, model_size, weights, imagenet_train_path, mvtec_ad_path, mvtec_loco_path, train_steps):
+        self.dataset = dataset
+        self.subdataset = subdataset
+        self.output_dir = output_dir
+        self.model_size = model_size
+        self.weights = weights
+        self.imagenet_train_path = imagenet_train_path
+        self.mvtec_ad_path = mvtec_ad_path
+        self.mvtec_loco_path = mvtec_loco_path
+        self.train_steps = train_steps
 
 # constants
 seed = 42
 on_gpu = torch.cuda.is_available()
+print(on_gpu)
 on_gpu_init = on_gpu#.copy()
 out_channels = 384
 image_size = 256
-test_interval = 2500
+test_interval = 35000
 
 # data loading
 default_transform = transforms.Compose([
@@ -79,7 +93,7 @@ def main():
     np.random.seed(seed)
     random.seed(seed)
 
-    config = get_argparse()
+    config = config_helper(dataset='mvtec_ad', subdataset='screw', output_dir='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad', model_size='small', weights='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth', imagenet_train_path='none', mvtec_ad_path=MVTEC_DIR, mvtec_loco_path='./mvtec_loco_anomaly_detection', train_steps=70000)
 
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
@@ -88,151 +102,161 @@ def main():
     else:
         raise Exception('Unknown config.dataset')
 
-    pretrain_penalty = True
-    if config.imagenet_train_path == 'none':
-        pretrain_penalty = False
-
-    # create output dir
-    train_output_dir = os.path.join(config.output_dir, 'trainings',
-                                    config.dataset, config.subdataset)
-    test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
-                                   config.dataset, config.subdataset, 'test')
-    if not os.path.exists(train_output_dir) and not os.path.exists(test_output_dir):
-        os.makedirs(train_output_dir)
-        os.makedirs(test_output_dir)
-
-    # load data
-    full_train_set = ImageFolderWithoutTarget(
-        os.path.join(dataset_path, config.subdataset, 'train'),
-        transform=transforms.Lambda(train_transform))
-    test_set = ImageFolderWithPath(
-        os.path.join(dataset_path, config.subdataset, 'test'))
-    if config.dataset == 'mvtec_ad':
-        # mvtec dataset paper recommend 10% validation set
-        train_size = int(0.9 * len(full_train_set))
-        validation_size = len(full_train_set) - train_size
-        rng = torch.Generator().manual_seed(seed) # random number generator
-        train_set, validation_set = torch.utils.data.random_split(full_train_set,
-                                                           [train_size,
-                                                            validation_size],
-                                                           rng)
-    elif config.dataset == 'mvtec_loco':
-        train_set = full_train_set
-        validation_set = ImageFolderWithoutTarget(
-            os.path.join(dataset_path, config.subdataset, 'validation'),
-            transform=transforms.Lambda(train_transform))
-    else:
-        raise Exception('Unknown config.dataset')
-
-
-    train_loader = DataLoader(train_set, batch_size=1, shuffle=True,
-                              num_workers=4, pin_memory=True)
-    train_loader_infinite = InfiniteDataloader(train_loader)
-    validation_loader = DataLoader(validation_set, batch_size=1)
-
-    if pretrain_penalty:
-        # load pretraining data for penalty
-        penalty_transform = transforms.Compose([
-            transforms.Resize((2 * image_size, 2 * image_size)),
-            transforms.RandomGrayscale(0.3),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224,
-                                                                  0.225])
-        ])
-        penalty_set = ImageFolderWithoutTarget(config.imagenet_train_path,
-                                               transform=penalty_transform)
-        penalty_loader = DataLoader(penalty_set, batch_size=1, shuffle=True,
-                                    num_workers=4, pin_memory=True)
-        penalty_loader_infinite = InfiniteDataloader(penalty_loader)
-    else:
-        penalty_loader_infinite = itertools.repeat(None)
-
-    # create models
-    if config.model_size == 'small':
-        teacher = get_pdn_small(out_channels)
-        student = get_pdn_small(2 * out_channels)
-    elif config.model_size == 'medium':
-        teacher = get_pdn_medium(out_channels)
-        student = get_pdn_medium(2 * out_channels)
-    else:
-        raise Exception('Unknown config.model_size')
-    state_dict = torch.load(config.weights, map_location='cpu')
-    teacher.load_state_dict(state_dict)
-    autoencoder = get_autoencoder(out_channels)
-
-    # teacher frozen
-    teacher.eval()
-    student.train()
-    autoencoder.train()
-
-    if on_gpu:
-        teacher.cuda()
-        student.cuda()
-        autoencoder.cuda()
-
-    teacher_mean, teacher_std = teacher_normalization(teacher, train_loader) # TODO: check what exactly is done here
-
-    optimizer = torch.optim.Adam(itertools.chain(student.parameters(),
-                                                 autoencoder.parameters()),
-                                 lr=1e-4, weight_decay=1e-5)
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, step_size=int(0.95 * config.train_steps), gamma=0.1)
-    tqdm_obj = tqdm(range(config.train_steps))
-    for iteration, (image_st, image_ae), image_penalty in zip(
-            tqdm_obj, train_loader_infinite, penalty_loader_infinite):
-        if on_gpu_init:
-            image_st = image_st.cuda()
-            image_ae = image_ae.cuda()
-            if image_penalty is not None:
-                image_penalty = image_penalty.cuda()
-            teacher = teacher.cuda()
-            student = student.cuda()
-            autoencoder = autoencoder.cuda()    
-            
-        # compute loss
-        with torch.no_grad():
-            teacher_output_st = teacher(image_st)
-            teacher_output_st = (teacher_output_st - teacher_mean) / teacher_std # normalized output of teacher --> TODO: What is the teacher?
-        student_output_st = student(image_st)[:, :out_channels] # take the first half of channels
-        distance_st = (teacher_output_st - student_output_st) ** 2 # compute the distance between teacher and student
-        d_hard = torch.quantile(distance_st, q=0.999) # compute threshold. This is done in order to avoid the model to learn insignificant differences
-        loss_hard = torch.mean(distance_st[distance_st >= d_hard]) # take only the values above the threshold and compute the mean
-
-        if image_penalty is not None:
-            student_output_penalty = student(image_penalty)[:, :out_channels]
-            loss_penalty = torch.mean(student_output_penalty**2)
-            loss_st = loss_hard + loss_penalty
-        else:
-            loss_st = loss_hard
-
-        ae_output = autoencoder(image_ae) 
-        with torch.no_grad():
-            teacher_output_ae = teacher(image_ae)
-            teacher_output_ae = (teacher_output_ae - teacher_mean) / teacher_std
-        student_output_ae = student(image_ae)[:, out_channels:] # take the second half of channels
-        distance_ae = (teacher_output_ae - ae_output)**2 # compute the distance between 
-        distance_stae = (ae_output - student_output_ae)**2
-        loss_ae = torch.mean(distance_ae)
-        loss_stae = torch.mean(distance_stae)
-        loss_total = loss_st + loss_ae + loss_stae
-        # optimizer step
-        optimizer.zero_grad()
-        loss_total.backward()
-        optimizer.step()
-        scheduler.step()
-
-        if iteration % 10 == 0:
-            tqdm_obj.set_description(
-                "Current loss: {:.4f}  ".format(loss_total.item()))
-        
-        # intermediate evaluation
-        if iteration % test_interval == 0 and iteration > 0:
-            calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp')
-    # final evaluation
-    calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'final')
-        
+    cats = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'own',
+            'hazelnut', 'leather', 'metal_nut', 'pill', 'screw',
+            'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     
+    for k, cat in enumerate(cats):
+        t_0 = perf_counter()
+        print(f'\nProcessing {cat}: {k+1}/{len(cats)}\n ')
+        config.subdataset = cat
+        
+        pretrain_penalty = True
+        if config.imagenet_train_path == 'none':
+            pretrain_penalty = False
+
+        # create output dir
+        train_output_dir = os.path.join(config.output_dir, 'trainings',
+                                        config.dataset, config.subdataset)
+        test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
+                                    config.dataset, config.subdataset, 'test')
+        if not os.path.exists(train_output_dir) and not os.path.exists(test_output_dir):
+            os.makedirs(train_output_dir)
+            os.makedirs(test_output_dir)
+
+        # load data
+        full_train_set = ImageFolderWithoutTarget(
+            os.path.join(dataset_path, config.subdataset, 'train'),
+            transform=transforms.Lambda(train_transform))
+        test_set = ImageFolderWithPath(
+            os.path.join(dataset_path, config.subdataset, 'test'))
+        if config.dataset == 'mvtec_ad':
+            # mvtec dataset paper recommend 10% validation set
+            train_size = int(0.9 * len(full_train_set))
+            validation_size = len(full_train_set) - train_size
+            rng = torch.Generator().manual_seed(seed) # random number generator
+            train_set, validation_set = torch.utils.data.random_split(full_train_set,
+                                                            [train_size,
+                                                                validation_size],
+                                                            rng)
+        elif config.dataset == 'mvtec_loco':
+            train_set = full_train_set
+            validation_set = ImageFolderWithoutTarget(
+                os.path.join(dataset_path, config.subdataset, 'validation'),
+                transform=transforms.Lambda(train_transform))
+        else:
+            raise Exception('Unknown config.dataset')
+
+
+        train_loader = DataLoader(train_set, batch_size=1, shuffle=True,
+                                num_workers=12, pin_memory=True)
+        train_loader_infinite = InfiniteDataloader(train_loader)
+        validation_loader = DataLoader(validation_set, batch_size=1)
+
+        if pretrain_penalty:
+            # load pretraining data for penalty
+            penalty_transform = transforms.Compose([
+                transforms.Resize((2 * image_size, 2 * image_size)),
+                transforms.RandomGrayscale(0.3),
+                transforms.CenterCrop(image_size),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224,
+                                                                    0.225])
+            ])
+            penalty_set = ImageFolderWithoutTarget(config.imagenet_train_path,
+                                                transform=penalty_transform)
+            penalty_loader = DataLoader(penalty_set, batch_size=1, shuffle=True,
+                                        num_workers=4, pin_memory=True)
+            penalty_loader_infinite = InfiniteDataloader(penalty_loader)
+        else:
+            penalty_loader_infinite = itertools.repeat(None)
+
+        # create models
+        if config.model_size == 'small':
+            teacher = get_pdn_small(out_channels)
+            student = get_pdn_small(2 * out_channels)
+        elif config.model_size == 'medium':
+            teacher = get_pdn_medium(out_channels)
+            student = get_pdn_medium(2 * out_channels)
+        else:
+            raise Exception('Unknown config.model_size')
+        state_dict = torch.load(config.weights, map_location='cpu')
+        teacher.load_state_dict(state_dict)
+        autoencoder = get_autoencoder(out_channels)
+
+        # teacher frozen
+        teacher.eval()
+        student.train()
+        autoencoder.train()
+
+        if on_gpu:
+            teacher.cuda()
+            student.cuda()
+            autoencoder.cuda()
+
+        teacher_mean, teacher_std = teacher_normalization(teacher, train_loader) # TODO: check what exactly is done here
+
+        optimizer = torch.optim.Adam(itertools.chain(student.parameters(),
+                                                    autoencoder.parameters()),
+                                    lr=1e-4, weight_decay=1e-5)
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=int(0.95 * config.train_steps), gamma=0.1)
+        tqdm_obj = tqdm(range(config.train_steps))
+        for iteration, (image_st, image_ae), image_penalty in zip(
+                tqdm_obj, train_loader_infinite, penalty_loader_infinite):
+            if on_gpu_init:
+                image_st = image_st.cuda()
+                image_ae = image_ae.cuda()
+                if image_penalty is not None:
+                    image_penalty = image_penalty.cuda()
+                teacher = teacher.cuda()
+                student = student.cuda()
+                autoencoder = autoencoder.cuda()    
+                
+            # compute loss
+            with torch.no_grad():
+                teacher_output_st = teacher(image_st)
+                teacher_output_st = (teacher_output_st - teacher_mean) / teacher_std # normalized output of teacher --> TODO: What is the teacher?
+            student_output_st = student(image_st)[:, :out_channels] # take the first half of channels
+            distance_st = (teacher_output_st - student_output_st) ** 2 # compute the distance between teacher and student
+            d_hard = torch.quantile(distance_st, q=0.999) # compute threshold. This is done in order to avoid the model to learn insignificant differences
+            loss_hard = torch.mean(distance_st[distance_st >= d_hard]) # take only the values above the threshold and compute the mean
+
+            if image_penalty is not None:
+                student_output_penalty = student(image_penalty)[:, :out_channels]
+                loss_penalty = torch.mean(student_output_penalty**2)
+                loss_st = loss_hard + loss_penalty
+            else:
+                loss_st = loss_hard
+
+            ae_output = autoencoder(image_ae) 
+            with torch.no_grad():
+                teacher_output_ae = teacher(image_ae)
+                teacher_output_ae = (teacher_output_ae - teacher_mean) / teacher_std
+            student_output_ae = student(image_ae)[:, out_channels:] # take the second half of channels
+            distance_ae = (teacher_output_ae - ae_output)**2 # compute the distance between 
+            distance_stae = (ae_output - student_output_ae)**2
+            loss_ae = torch.mean(distance_ae)
+            loss_stae = torch.mean(distance_stae)
+            loss_total = loss_st + loss_ae + loss_stae
+            # optimizer step
+            optimizer.zero_grad()
+            loss_total.backward()
+            optimizer.step()
+            scheduler.step()
+
+            if iteration % 10 == 0:
+                tqdm_obj.set_description(
+                    "Current loss: {:.4f}  ".format(loss_total.item()))
+            
+            # intermediate evaluation
+            if iteration % test_interval == 0 and iteration > 0:
+                calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp')
+        # final evaluation
+        calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'final')
+        t_1 = perf_counter()
+        print(f'Time taken: {(t_1 - t_0)/60} min')
+        
 def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
          q_st_start, q_st_end, q_ae_start, q_ae_end, test_output_dir=None,
          desc='Running inference', q_flag=False):
