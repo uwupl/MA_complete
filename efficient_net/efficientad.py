@@ -16,7 +16,7 @@ import json
 from sklearn.metrics import roc_auc_score
 import sys
 sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
-from path_definitions import MVTEC_DIR
+# from path_definitions import MVTEC_DIR
 from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
     ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 # else:
@@ -93,7 +93,7 @@ def main():
     np.random.seed(seed)
     random.seed(seed)
 
-    config = config_helper(dataset='mvtec_ad', subdataset='screw', output_dir='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad', model_size='small', weights='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth', imagenet_train_path='none', mvtec_ad_path=MVTEC_DIR, mvtec_loco_path='./mvtec_loco_anomaly_detection', train_steps=70000)
+    config = config_helper(dataset='mvtec_ad', subdataset='screw', output_dir='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad', model_size='small', weights='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth', imagenet_train_path='none', mvtec_ad_path='not_used_anyway', mvtec_loco_path='./mvtec_loco_anomaly_detection', train_steps=70000)
 
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
@@ -406,7 +406,7 @@ class RandomImageDataset(torch.utils.data.Dataset):
 
         return image, 0, 0, 0, 0
 
-def quantize_model(teacher, student, autoencoder, calibration_loader=None):
+def quantize_model(teacher, student, autoencoder, calibration_loader=None, backend='fbgemm'):
     import torch.quantization as tq
     import torch.ao.quantization as taoq
     
@@ -419,9 +419,9 @@ def quantize_model(teacher, student, autoencoder, calibration_loader=None):
     
     teacher, student, autoencoder = taoq.QuantWrapper(teacher), taoq.QuantWrapper(student), taoq.QuantWrapper(autoencoder)
     
-    teacher.qconfig = tq.get_default_qconfig('fbgemm')
-    student.qconfig = tq.get_default_qconfig('fbgemm')
-    autoencoder.qconfig = tq.get_default_qconfig('fbgemm')
+    teacher.qconfig = tq.get_default_qconfig(backend)
+    student.qconfig = tq.get_default_qconfig(backend)
+    autoencoder.qconfig = tq.get_default_qconfig(backend)
     
     tq.prepare(teacher, inplace=True)
     tq.prepare(student, inplace=True)

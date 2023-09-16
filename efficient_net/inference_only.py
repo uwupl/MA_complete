@@ -14,7 +14,7 @@ from sklearn.metrics import roc_auc_score
 if __name__ == '__main__':
     import sys
     sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
-    from path_definitions import MVTEC_DIR
+    # from path_definitions import MVTEC_DIR
     from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
         ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 else:
@@ -22,30 +22,39 @@ else:
         ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 
 
-def get_argparse():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--dataset', default='mvtec_ad',
-                        choices=['mvtec_ad', 'mvtec_loco'])
-    parser.add_argument('-s', '--subdataset', default='screw',
-                        help='One of 15 sub-datasets of Mvtec AD or 5' +
-                             'sub-datasets of Mvtec LOCO')
-    parser.add_argument('-o', '--output_dir', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad')
-    parser.add_argument('-m', '--model_size', default='small',
-                        choices=['small', 'medium'])
-    parser.add_argument('-w', '--weights', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth')
-    parser.add_argument('-i', '--imagenet_train_path',
-                        default='none',
-                        help='Set to "none" to disable ImageNet' +
-                             'pretraining penalty. Or see README.md to' +
-                             'download ImageNet and set to ImageNet path')
-    parser.add_argument('-a', '--mvtec_ad_path',
-                        default=MVTEC_DIR,
-                        help='Downloaded Mvtec AD dataset')
-    parser.add_argument('-b', '--mvtec_loco_path',
-                        default='./mvtec_loco_anomaly_detection',
-                        help='Downloaded Mvtec LOCO dataset')
-    return parser.parse_args()
-    
+# def get_argparse():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('-d', '--dataset', default='mvtec_ad',
+#                         choices=['mvtec_ad', 'mvtec_loco'])
+#     parser.add_argument('-s', '--subdataset', default='screw',
+#                         help='One of 15 sub-datasets of Mvtec AD or 5' +
+#                              'sub-datasets of Mvtec LOCO')
+#     parser.add_argument('-o', '--output_dir', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad')
+#     parser.add_argument('-m', '--model_size', default='small',
+#                         choices=['small', 'medium'])
+#     parser.add_argument('-w', '--weights', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth')
+#     parser.add_argument('-i', '--imagenet_train_path',
+#                         default='none',
+#                         help='Set to "none" to disable ImageNet' +
+#                              'pretraining penalty. Or see README.md to' +
+#                              'download ImageNet and set to ImageNet path')
+#     parser.add_argument('-a', '--mvtec_ad_path',
+#                         default=MVTEC_DIR,
+#                         help='Downloaded Mvtec AD dataset')
+#     parser.add_argument('-b', '--mvtec_loco_path',
+#                         default='./mvtec_loco_anomaly_detection',
+#                         help='Downloaded Mvtec LOCO dataset')
+#     return parser.parse_args()
+
+class config_helper():
+    def __init__(self, dataset, subdataset, output_dir, model_size, weights, mvtec_ad_path):
+        self.dataset = dataset
+        self.subdataset = subdataset
+        self.output_dir = output_dir
+        self.model_size = model_size
+        self.weights = weights
+        self.mvtec_ad_path = mvtec_ad_path
+
 # constants
 seed = 42
 on_gpu = torch.cuda.is_available()
@@ -59,7 +68,8 @@ def main():
     Loads quantized (!) teacher, student and autoencoder models from the specified weights.
     '''
     
-    config = get_argparse()
+    config = config_helper(dataset='mvtec_ad', subdataset='bottle', output_dir='/home/jo/MA/code/MA_complete/results', model_size='small', weights='/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth', mvtec_ad_path='/home/jo/MA/MVTechAD')
+    # config = get_argparse()
     print(config)
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
@@ -71,7 +81,7 @@ def main():
     test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
                                 config.dataset, config.subdataset, 'test')
     
-    model_dir = os.path.join(config.output_dir, 'trainings', config.dataset,
+    model_dir = os.path.join('/home/jo/MA/code/MA_complete/quantized_models', #config.output_dir, 'trainings', config.dataset,
                                 config.subdataset)
     # /mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad/trainings/mvtec_ad/screw
     test_set = ImageFolderWithPath(
@@ -90,15 +100,42 @@ def main():
     
     autoencoder = get_autoencoder(out_channels)
     
-    teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=None)
+    # teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=None)
     
     # load weights
     phase = 'tmp' # or 'final'
-    teacher.load_state_dict(torch.load(os.path.join(model_dir, f'teacher_q_{phase}.pth')))
-    student.load_state_dict(torch.load(os.path.join(model_dir, f'student_q_{phase}.pth')))
-    autoencoder.load_state_dict(torch.load(os.path.join(model_dir, f'autoencoder_q_{phase}.pth')))
+    # teacher.load_state_dict(torch.load(os.path.join(model_dir, f'teacher_q_{phase}.pth')))
+    # student.load_state_dict(torch.load(os.path.join(model_dir, f'student_q_{phase}.pth')))
+    # autoencoder.load_state_dict(torch.load(os.path.join(model_dir, f'autoencoder_q_{phase}.pth')))
 
-    with open(os.path.join(model_dir, 'statistics.json'), 'rb') as f: # _{phase}
+    teacher = torch.load(os.path.join(model_dir, f'teacher_{phase}.pth'), map_location=torch.device('cpu'))
+    student = torch.load(os.path.join(model_dir, f'student_{phase}.pth'), map_location=torch.device('cpu'))
+    autoencoder = torch.load(os.path.join(model_dir, f'autoencoder_{phase}.pth'), map_location=torch.device('cpu'))
+    # student.load_state_dict(torch.load(os.path.join(model_dir, f'student_{phase}.pth')))
+    # autoencoder.load_state_dict(torch.load(os.path.join(model_dir, f'autoencoder_{phase}.pth')))
+    
+        # load data
+    full_train_set = ImageFolderWithoutTarget(
+        os.path.join(dataset_path, config.subdataset, 'train'),
+        transform=transforms.Lambda(train_transform))
+    test_set = ImageFolderWithPath(
+        os.path.join(dataset_path, config.subdataset, 'test'))
+    # if config.dataset == 'mvtec_ad':
+    # mvtec dataset paper recommend 10% validation set
+    train_size = int(0.9 * len(full_train_set))
+    validation_size = len(full_train_set) - train_size
+    rng = torch.Generator().manual_seed(seed) # random number generator
+    train_set, validation_set = torch.utils.data.random_split(full_train_set,
+                                                    [train_size,
+                                                        validation_size],
+                                                    rng)
+    t_0 = perf_counter()
+    print('Quantizing models...')
+    teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=validation_set, backend='qnnpack')
+    t_1 = perf_counter()
+    print(f'Quantization took {t_1 - t_0} seconds')
+
+    with open(os.path.join(model_dir, f'statistics_{phase}.json'), 'rb') as f: # _{phase}
         statistics = json.load(f)#, allow_pickle=True)
    
     print(statistics.keys())
@@ -119,12 +156,6 @@ def main():
     auc_train = statistics['auc']
     auc_train_q = statistics['auc_q']
 
-
-
-
-    # teacher_mean_q
-    
-    # inference
     auc_q = test(
         test_set=test_set, teacher=teacher, student=student,
         autoencoder=autoencoder, teacher_mean=teacher_q_mean,
