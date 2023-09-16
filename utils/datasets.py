@@ -10,7 +10,7 @@ import json
 import io
 
 data_transforms = transforms.Compose([
-                transforms.Resize((256, 256), Image.ANTIALIAS),
+                transforms.Resize((256, 256), Image.LANCZOS),
                 transforms.ToTensor(),
                 transforms.CenterCrop(224),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406],

@@ -62,13 +62,14 @@ on_gpu = torch.cuda.is_available()
 on_gpu_init = on_gpu#.copy()
 out_channels = 384
 image_size = 256
+torch.backends.quantized.engine = 'qnnpack'
 
 def main():
     '''
     Performs inference on the test set of the specified dataset and subdataset.
     Loads quantized (!) teacher, student and autoencoder models from the specified weights.
     '''
-    raspberry_pi = False
+    raspberry_pi = True
     if raspberry_pi:
         output_dir = '/home/jo/MA/code/MA_complete/results/'
         weights = '/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth'
@@ -81,9 +82,8 @@ def main():
         mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
         model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
         backend = 'x86'
-    config = config_helper(dataset='mvtec_ad', subdataset='bottle', output_dir=output_dir, model_size='small', weights=weights, mvtec_ad_path=mvtec_ad_path, model_base_dir=model_base_dir)
-    # config = get_argparse()
-    print(config)
+    config = config_helper(dataset='mvtec_ad', subdataset='cable', output_dir=output_dir, model_size='small', weights=weights, mvtec_ad_path=mvtec_ad_path, model_base_dir=model_base_dir)
+
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
     elif config.dataset == 'mvtec_loco':
@@ -147,7 +147,9 @@ def main():
     
     t_0 = perf_counter()
     print('Quantizing models...')
-    teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=validation_loader, backend=backend)
+    teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder, calibration_loader=validation_loader, backend=backend)
+    print(teacher)
+    out = teacher(torch.randn(1, 3, 256, 256))
     t_1 = perf_counter()
     print(f'Quantization took {t_1 - t_0} seconds')
 
@@ -171,20 +173,34 @@ def main():
 
     auc_train = statistics['auc']
     auc_train_q = statistics['auc_q']
-
+    # quantized models
+    t_0 = perf_counter()
     auc_q = test(
-        test_set=test_set, teacher=teacher, student=student,
-        autoencoder=autoencoder, teacher_mean=teacher_q_mean,
+        test_set=test_set, teacher=teacher_q, student=student_q,
+        autoencoder=autoencoder_q, teacher_mean=teacher_q_mean,
         teacher_std=teacher_q_std, q_st_start=q_st_start,
         q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
         test_output_dir=None, desc='Intermediate inference',
         q_flag=True)
+    t_1 = perf_counter()
+    print(f'Inference took {t_1 - t_0} seconds')
+    # fp32 models
+    t_0 = perf_counter()
+    auc = test(
+        test_set=test_set, teacher=teacher, student=student,
+        autoencoder=autoencoder, teacher_mean=teacher_mean,
+        teacher_std=teacher_std, q_st_start=q_st_start,
+        q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+        test_output_dir=None, desc='Intermediate inference',
+        q_flag=False)
+    t_1 = perf_counter()
+    print(f'Inference took {t_1 - t_0} seconds')
     
+    print(f'auc: {auc} %')
     print(f'auc_q: {auc_q} %')
     print(f'auc_train: {auc_train} %')
     print(f'auc_train_q: {auc_train_q} %')
     print(f'auc_q - auc_train: {auc_q - auc_train} %')
-
 
 if __name__ == '__main__':
     main()

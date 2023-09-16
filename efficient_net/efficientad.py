@@ -302,6 +302,7 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
 @torch.no_grad()
 def predict(image, teacher, student, autoencoder, teacher_mean, teacher_std,
             q_st_start=None, q_st_end=None, q_ae_start=None, q_ae_end=None):
+    
     teacher_output = teacher(image)
     device = teacher_output.device
     teacher_mean, teacher_std = teacher_mean.to(device), teacher_std.to(device)
@@ -416,7 +417,7 @@ def quantize_model(teacher, student, autoencoder, calibration_loader=None, backe
     
     teacher, student, autoencoder = teacher.to('cpu'), student.to('cpu'), autoencoder.to('cpu')
     
-    teacher, student, autoencoder = tq.fuse_modules(teacher, fuse_list_teacher_student), tq.fuse_modules(student, fuse_list_teacher_student), tq.fuse_modules(autoencoder, fuse_list_autoencoder)   
+    teacher, student, autoencoder = tq.fuse_modules(teacher, fuse_list_teacher_student), tq.fuse_modules(student, fuse_list_teacher_student), tq.fuse_modules(autoencoder, fuse_list_autoencoder)
     
     teacher, student, autoencoder = taoq.QuantWrapper(teacher), taoq.QuantWrapper(student), taoq.QuantWrapper(autoencoder)
     
