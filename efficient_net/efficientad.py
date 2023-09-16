@@ -71,7 +71,7 @@ print(on_gpu)
 on_gpu_init = on_gpu#.copy()
 out_channels = 384
 image_size = 256
-test_interval = 35000
+test_interval = 350
 
 # data loading
 default_transform = transforms.Compose([
@@ -93,7 +93,7 @@ def main():
     np.random.seed(seed)
     random.seed(seed)
 
-    config = config_helper(dataset='mvtec_ad', subdataset='screw', output_dir='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad', model_size='small', weights='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth', imagenet_train_path='none', mvtec_ad_path='not_used_anyway', mvtec_loco_path='./mvtec_loco_anomaly_detection', train_steps=70000)
+    config = config_helper(dataset='mvtec_ad', subdataset='screw', output_dir='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad', model_size='small', weights='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth', imagenet_train_path='none', mvtec_ad_path='/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD', mvtec_loco_path='./mvtec_loco_anomaly_detection', train_steps=70000)
 
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
@@ -251,12 +251,13 @@ def main():
             
             # intermediate evaluation
             if iteration % test_interval == 0 and iteration > 0:
-                calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp')
+                calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp_test')
         # final evaluation
         calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'final')
         t_1 = perf_counter()
         print(f'Time taken: {(t_1 - t_0)/60} min')
-        
+
+@torch.no_grad()
 def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
          q_st_start, q_st_end, q_ae_start, q_ae_end, test_output_dir=None,
          desc='Running inference', q_flag=False):
@@ -433,6 +434,7 @@ def quantize_model(teacher, student, autoencoder, calibration_loader=None, backe
                 with torch.inference_mode():
                     for inputs in loader:
                         x = inputs[idx]
+                        # print(x.shape)
                         _ = model(x)
 
         # from PIL import Image
@@ -453,13 +455,18 @@ def quantize_model(teacher, student, autoencoder, calibration_loader=None, backe
     
     return teacher.eval(), student.eval(), autoencoder.eval()
 
-@torch.no_grad()  
+# @torch.no_grad()  
 def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp'):
 
     # run intermediate evaluation
     teacher.eval()
     student.eval()
     autoencoder.eval()
+    
+    print(train_output_dir)
+    if not os.path.exists(train_output_dir):
+        print('here')
+        os.makedirs(train_output_dir)
     
     torch.save(teacher, os.path.join(train_output_dir,
                                         f'teacher_{phase}.pth'))
@@ -563,8 +570,6 @@ def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std
 
     # teacher frozen
             
-
-
 if __name__ == '__main__':
     main()
 

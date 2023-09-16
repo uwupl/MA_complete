@@ -47,13 +47,14 @@ else:
 #     return parser.parse_args()
 
 class config_helper():
-    def __init__(self, dataset, subdataset, output_dir, model_size, weights, mvtec_ad_path):
+    def __init__(self, dataset, subdataset, output_dir, model_size, weights, mvtec_ad_path, model_base_dir):
         self.dataset = dataset
         self.subdataset = subdataset
         self.output_dir = output_dir
         self.model_size = model_size
         self.weights = weights
         self.mvtec_ad_path = mvtec_ad_path
+        self.model_base_dir = model_base_dir
 
 # constants
 seed = 42
@@ -67,8 +68,20 @@ def main():
     Performs inference on the test set of the specified dataset and subdataset.
     Loads quantized (!) teacher, student and autoencoder models from the specified weights.
     '''
-    
-    config = config_helper(dataset='mvtec_ad', subdataset='bottle', output_dir='/home/jo/MA/code/MA_complete/results', model_size='small', weights='/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth', mvtec_ad_path='/home/jo/MA/MVTechAD')
+    raspberry_pi = False
+    if raspberry_pi:
+        output_dir = '/home/jo/MA/code/MA_complete/results/'
+        weights = '/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth'
+        mvtec_ad_path = '/home/jo/MA/MVTechAD'
+        model_base_dir = '/home/jo/MA/code/MA_complete/quantized_models'
+        backend = 'qnnpack'
+    else:
+        output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
+        weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
+        mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
+        model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
+        backend = 'x86'
+    config = config_helper(dataset='mvtec_ad', subdataset='bottle', output_dir=output_dir, model_size='small', weights=weights, mvtec_ad_path=mvtec_ad_path, model_base_dir=model_base_dir)
     # config = get_argparse()
     print(config)
     if config.dataset == 'mvtec_ad':
@@ -81,7 +94,7 @@ def main():
     test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
                                 config.dataset, config.subdataset, 'test')
     
-    model_dir = os.path.join('/home/jo/MA/code/MA_complete/quantized_models', #config.output_dir, 'trainings', config.dataset,
+    model_dir = os.path.join(config.model_base_dir, #config.output_dir, 'trainings', config.dataset,
                                 config.subdataset)
     # /mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad/trainings/mvtec_ad/screw
     test_set = ImageFolderWithPath(
@@ -125,13 +138,16 @@ def main():
     train_size = int(0.9 * len(full_train_set))
     validation_size = len(full_train_set) - train_size
     rng = torch.Generator().manual_seed(seed) # random number generator
-    train_set, validation_set = torch.utils.data.random_split(full_train_set,
+    _, validation_set = torch.utils.data.random_split(full_train_set,
                                                     [train_size,
                                                         validation_size],
                                                     rng)
+    
+    validation_loader = DataLoader(validation_set, batch_size=1)
+    
     t_0 = perf_counter()
     print('Quantizing models...')
-    teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=validation_set, backend='qnnpack')
+    teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=validation_loader, backend=backend)
     t_1 = perf_counter()
     print(f'Quantization took {t_1 - t_0} seconds')
 
