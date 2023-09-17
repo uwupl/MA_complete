@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import json
 from sklearn.metrics import roc_auc_score
+import platform
 
 if __name__ == '__main__':
     import sys
@@ -62,14 +63,18 @@ on_gpu = torch.cuda.is_available()
 on_gpu_init = on_gpu#.copy()
 out_channels = 384
 image_size = 256
-torch.backends.quantized.engine = 'qnnpack'
-
+raspberry_pi = False if platform.machine().__contains__('x86') else True
+if raspberry_pi:
+    torch.backends.quantized.engine = 'qnnpack'
+else:
+    torch.backends.quantized.engine = 'fbgemm'
+    
 def main():
     '''
     Performs inference on the test set of the specified dataset and subdataset.
     Loads quantized (!) teacher, student and autoencoder models from the specified weights.
     '''
-    raspberry_pi = True
+    # raspberry_pi = True
     if raspberry_pi:
         output_dir = '/home/jo/MA/code/MA_complete/results/'
         weights = '/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth'
@@ -91,8 +96,8 @@ def main():
     else:
         raise Exception('Unknown config.dataset')
 
-    test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
-                                config.dataset, config.subdataset, 'test')
+    # test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
+    #                             config.dataset, config.subdataset, 'test')
     
     model_dir = os.path.join(config.model_base_dir, #config.output_dir, 'trainings', config.dataset,
                                 config.subdataset)
