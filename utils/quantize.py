@@ -120,6 +120,7 @@ def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, cat
     fuse_list = generate_fuse_list(fused_model)
     # print(f'Fuse list: {fuse_list}')
     a = fuse_model(fused_model, fuse_list)
+    # a = fused_model
     
     # add quantization layers
     b = QuantizedModel(a, layers_needed=layers_needed, feature_dim = model.feature_dim)
@@ -149,7 +150,7 @@ def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, cat
         elif calibrate.lower().__contains__('random'):
             from .datasets import RandomImageDataset, data_transforms
             dataset = RandomImageDataset(num_images=num_images, transform=data_transforms)
-        loader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=12)
+        loader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=4)
         calibrate_model(b, loader, device=torch.device("cpu:0"))
     else:
         print('No calibration performed. It is recommended to load a pretrained model\'s state dict then.')
