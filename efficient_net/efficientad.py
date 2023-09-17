@@ -260,9 +260,14 @@ def main():
 @torch.no_grad()
 def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
          q_st_start, q_st_end, q_ae_start, q_ae_end, test_output_dir=None,
-         desc='Running inference', q_flag=False):
+         save_anomaly_map = False, desc='Running inference', q_flag=False, measure_inference_time=False):
     y_true = []
     y_score = []
+    if measure_inference_time:
+        teacher_inference_times = []
+        student_inference_times = []
+        autoencoder_inference_times = []
+        map_normalization_inference_times = []
     if not q_flag:
         on_gpu = True if next(student.parameters()).is_cuda else False
     else:
@@ -274,18 +279,30 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
         image = image[None]
         if on_gpu:
             image = image.cuda()
-        map_combined, map_st, map_ae = predict(
-            image=image, teacher=teacher, student=student,
-            autoencoder=autoencoder, teacher_mean=teacher_mean,
-            teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
-            q_ae_start=q_ae_start, q_ae_end=q_ae_end)
-        map_combined = torch.nn.functional.pad(map_combined, (4, 4, 4, 4))
-        map_combined = torch.nn.functional.interpolate(
-            map_combined, (orig_height, orig_width), mode='bilinear')
+        if measure_inference_time:
+            map_combined, _, _, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = predict(
+                image=image, teacher=teacher, student=student,
+                autoencoder=autoencoder, teacher_mean=teacher_mean,
+                teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
+                q_ae_start=q_ae_start, q_ae_end=q_ae_end, measure_inference_time=measure_inference_time)
+            teacher_inference_times.append(teacher_inference)
+            student_inference_times.append(student_inference)
+            autoencoder_inference_times.append(autoencoder_inference)
+            map_normalization_inference_times.append(map_normalization_inference)
+        else:
+            map_combined, _, _ = predict(
+                image=image, teacher=teacher, student=student,
+                autoencoder=autoencoder, teacher_mean=teacher_mean,
+                teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
+                q_ae_start=q_ae_start, q_ae_end=q_ae_end, measure_inference_time=measure_inference_time)
+        if save_anomaly_map:
+            map_combined = torch.nn.functional.pad(map_combined, (4, 4, 4, 4))
+            map_combined = torch.nn.functional.interpolate(
+                map_combined, (orig_height, orig_width), mode='bilinear')
         map_combined = map_combined[0, 0].cpu().numpy()
 
         defect_class = os.path.basename(os.path.dirname(path))
-        if test_output_dir is not None:
+        if test_output_dir is not None and save_anomaly_map:
             img_nm = os.path.split(path)[1].split('.')[0]
             if not os.path.exists(os.path.join(test_output_dir, defect_class)):
                 os.makedirs(os.path.join(test_output_dir, defect_class))
@@ -293,16 +310,28 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
             tifffile.imwrite(file, map_combined)
 
         y_true_image = 0 if defect_class == 'good' else 1
-        y_score_image = np.max(map_combined)
+        
+        # y_score_image = np.max(map_combined) # TODO weighted average, not just max
+        y_score_image = np.sort(map_combined.flatten())[-int(0.01*len(map_combined.flatten()))]
         y_true.append(y_true_image)
         y_score.append(y_score_image)
     auc = roc_auc_score(y_true=y_true, y_score=y_score)
-    return auc * 100
+    if measure_inference_time:
+        teacher_inference_mean = np.mean(teacher_inference_times)
+        student_inference_mean = np.mean(student_inference_times)
+        autoencoder_inference_mean = np.mean(autoencoder_inference_times)
+        map_normalization_inference_mean = np.mean(map_normalization_inference_times)
+    if measure_inference_time:
+        return auc * 100, teacher_inference_mean, student_inference_mean, autoencoder_inference_mean, map_normalization_inference_mean
+    else:
+        return auc * 100
 
 @torch.no_grad()
 def predict(image, teacher, student, autoencoder, teacher_mean, teacher_std,
-            q_st_start=None, q_st_end=None, q_ae_start=None, q_ae_end=None):
+            q_st_start=None, q_st_end=None, q_ae_start=None, q_ae_end=None, measure_inference_time=False):
     
+    if measure_inference_time:
+        t_0 = perf_counter()
     teacher_output = teacher(image)
     device = teacher_output.device
     teacher_mean, teacher_std = teacher_mean.to(device), teacher_std.to(device)
@@ -311,8 +340,14 @@ def predict(image, teacher, student, autoencoder, teacher_mean, teacher_std,
     q_ae_start = q_ae_start.to(device) if q_ae_start is not None else None
     q_ae_end = q_ae_end.to(device) if q_ae_end is not None else None
     teacher_output = (teacher_output - teacher_mean) / teacher_std
+    if measure_inference_time:  
+        t_1 = perf_counter()
     student_output = student(image)
+    if measure_inference_time:
+        t_2 = perf_counter()
     autoencoder_output = autoencoder(image)
+    if measure_inference_time:
+        t_3 = perf_counter()
     map_st = torch.mean((teacher_output - student_output[:, :out_channels])**2,
                         dim=1, keepdim=True)
     map_ae = torch.mean((autoencoder_output -
@@ -323,7 +358,12 @@ def predict(image, teacher, student, autoencoder, teacher_mean, teacher_std,
     if q_ae_start is not None:
         map_ae = 0.1 * (map_ae - q_ae_start) / (q_ae_end - q_ae_start)
     map_combined = 0.5 * map_st + 0.5 * map_ae
-    return map_combined, map_st, map_ae
+    if measure_inference_time:
+        t_4 = perf_counter()
+    if measure_inference_time:
+        return map_combined, map_st, map_ae, t_1 - t_0, t_2 - t_1, t_3 - t_2, t_4 - t_3
+    else:
+        return map_combined, map_st, map_ae
 
 @torch.no_grad()
 def map_normalization(validation_loader, teacher, student, autoencoder,

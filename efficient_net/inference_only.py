@@ -122,16 +122,10 @@ def main():
     
     # load weights
     phase = 'tmp' # or 'final'
-    # teacher.load_state_dict(torch.load(os.path.join(model_dir, f'teacher_q_{phase}.pth')))
-    # student.load_state_dict(torch.load(os.path.join(model_dir, f'student_q_{phase}.pth')))
-    # autoencoder.load_state_dict(torch.load(os.path.join(model_dir, f'autoencoder_q_{phase}.pth')))
 
     teacher = torch.load(os.path.join(model_dir, f'teacher_{phase}.pth'), map_location=torch.device('cpu'))
     student = torch.load(os.path.join(model_dir, f'student_{phase}.pth'), map_location=torch.device('cpu'))
     autoencoder = torch.load(os.path.join(model_dir, f'autoencoder_{phase}.pth'), map_location=torch.device('cpu'))
-    # student.load_state_dict(torch.load(os.path.join(model_dir, f'student_{phase}.pth')))
-    # autoencoder.load_state_dict(torch.load(os.path.join(model_dir, f'autoencoder_{phase}.pth')))
-    
         # load data
     full_train_set = ImageFolderWithoutTarget(
         os.path.join(dataset_path, config.subdataset, 'train'),
@@ -161,7 +155,6 @@ def main():
     with open(os.path.join(model_dir, f'statistics_{phase}.json'), 'rb') as f: # _{phase}
         statistics = json.load(f)#, allow_pickle=True)
    
-    print(statistics.keys())
     teacher_mean = torch.tensor(statistics['teacher_mean'])
     teacher_std = torch.tensor(statistics['teacher_std'])
     q_st_start = torch.tensor(statistics['q_st_start'])
@@ -180,24 +173,24 @@ def main():
     auc_train_q = statistics['auc_q']
     # quantized models
     t_0 = perf_counter()
-    auc_q = test(
+    auc_q, teacher_inference_q, student_inference_q, autoencoder_inference_q, map_normalization_inference_q = test(
         test_set=test_set, teacher=teacher_q, student=student_q,
         autoencoder=autoencoder_q, teacher_mean=teacher_q_mean,
         teacher_std=teacher_q_std, q_st_start=q_st_start,
         q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
         test_output_dir=None, desc='Intermediate inference',
-        q_flag=True)
+        q_flag=True, measure_inference_time=True)
     t_1 = perf_counter()
     print(f'Inference took {t_1 - t_0} seconds')
     # fp32 models
     t_0 = perf_counter()
-    auc = test(
+    auc, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = test(
         test_set=test_set, teacher=teacher, student=student,
         autoencoder=autoencoder, teacher_mean=teacher_mean,
         teacher_std=teacher_std, q_st_start=q_st_start,
         q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
         test_output_dir=None, desc='Intermediate inference',
-        q_flag=False)
+        q_flag=False, measure_inference_time=True)
     t_1 = perf_counter()
     print(f'Inference took {t_1 - t_0} seconds')
     
@@ -206,6 +199,16 @@ def main():
     print(f'auc_train: {auc_train} %')
     print(f'auc_train_q: {auc_train_q} %')
     print(f'auc_q - auc_train: {auc_q - auc_train} %')
+    
+    print(f'\nteacher_inference: {teacher_inference*1e3} ms')
+    print(f'teacher_inference_q: {teacher_inference_q*1e3} ms')
+    print(f'student_inference: {student_inference*1e3} ms')
+    print(f'student_inference_q: {student_inference_q*1e3} ms')
+    print(f'autoencoder_inference: {autoencoder_inference*1e3} ms')
+    print(f'autoencoder_inference_q: {autoencoder_inference_q*1e3} ms')
+    print(f'map_normalization_inference: {map_normalization_inference*1e3} ms')
+    print(f'map_normalization_inference_q: {map_normalization_inference_q*1e3} ms')
+    
 
 if __name__ == '__main__':
     main()
