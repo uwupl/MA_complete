@@ -126,7 +126,20 @@ class Backbone(nn.Module):
             weights = models.ConvNeXt_Large_Weights
             self.model = models.convnext_large(weights=weights).features
             self.procedure_convnext()
-        
+            
+        if self.model_id.__contains__('pdn') and self.model_id.__contains__('small'):
+            self.model = get_pdn_small()
+            weights_path = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
+            self.model.load_state_dict(torch.load(weights_path))
+            self.hooks_needed = False
+            
+        if self.model_id.__contains__('pdn') and self.model_id.__contains__('medium'):
+            self.model = get_pdn_medium()
+            weights_path = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_medium.pth'
+            self.model.load_state_dict(torch.load(weights_path))
+            self.hooks_needed = False
+            
+            
         for param in self.model.parameters():
             param.requires_grad = False
         
@@ -732,4 +745,45 @@ class FeatureAdaptor(nn.Module):
         self.fc = nn.Linear(input_size, output_size, bias=False)
     
     def forward(self, x):
-        return self.fc(x)        
+        return self.fc(x)
+
+# from efficientnet
+def get_pdn_small(out_channels=384, padding=False):
+    pad_mult = 1 if padding else 0
+    return nn.Sequential(
+        nn.Conv2d(in_channels=3, out_channels=128, kernel_size=4,
+                  padding=3 * pad_mult),
+        nn.ReLU(inplace=True),
+        nn.AvgPool2d(kernel_size=2, stride=2, padding=1 * pad_mult),
+        nn.Conv2d(in_channels=128, out_channels=256, kernel_size=4,
+                  padding=3 * pad_mult),
+        nn.ReLU(inplace=True),
+        nn.AvgPool2d(kernel_size=2, stride=2, padding=1 * pad_mult),
+        nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3,
+                  padding=1 * pad_mult),
+        nn.ReLU(inplace=True),
+        nn.Conv2d(in_channels=256, out_channels=out_channels, kernel_size=4)
+    )
+
+def get_pdn_medium(out_channels=384, padding=False):
+    pad_mult = 1 if padding else 0
+    return nn.Sequential(
+        nn.Conv2d(in_channels=3, out_channels=256, kernel_size=4,
+                  padding=3 * pad_mult),
+        nn.ReLU(inplace=True),
+        nn.AvgPool2d(kernel_size=2, stride=2, padding=1 * pad_mult),
+        nn.Conv2d(in_channels=256, out_channels=512, kernel_size=4,
+                  padding=3 * pad_mult),
+        nn.ReLU(inplace=True),
+        nn.AvgPool2d(kernel_size=2, stride=2, padding=1 * pad_mult),
+        nn.Conv2d(in_channels=512, out_channels=512, kernel_size=1),
+        nn.ReLU(inplace=True),
+        nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3,
+                  padding=1 * pad_mult),
+        nn.ReLU(inplace=True),
+        nn.Conv2d(in_channels=512, out_channels=out_channels, kernel_size=4),
+        nn.ReLU(inplace=True),
+        nn.Conv2d(in_channels=out_channels, out_channels=out_channels,
+                  kernel_size=1)
+    )
+        

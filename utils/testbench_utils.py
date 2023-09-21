@@ -145,7 +145,7 @@ def get_default_PatchCoreModel():
     model.sigmoid_in_last_layer = False # sigmoid will be used for final layer
     model.normalize = False # performs normalization on the feature vector; mean = 0, std = 1
     # backbone reduction
-    model.layer_cut = False
+    model.layer_cut = True
     model.prune_output_layer = (False, [])
     # nearest neighbor search
     model.coreset_sampling_ratio = 0.01 #1%
@@ -156,6 +156,9 @@ def get_default_PatchCoreModel():
     model.adapted_score_calc = False
     model.n_neighbors = 9
     model.n_next_patches = 5 # only for adapted_score_calc
+    # nn search
+    model.faiss_standard = True
+    model.own_knn = False
     # channel reduction
     model.reduce_via_std = False
     model.reduce_via_entropy = False

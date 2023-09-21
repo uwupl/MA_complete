@@ -12,7 +12,8 @@ import random
 from tqdm import tqdm
 from time import perf_counter
 import json
-
+import platform
+import datetime
 from sklearn.metrics import roc_auc_score
 import sys
 sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
@@ -53,29 +54,73 @@ from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
 
 
 class config_helper():
-    def __init__(self, dataset, subdataset, output_dir, model_size, weights, imagenet_train_path, mvtec_ad_path, mvtec_loco_path, train_steps):
-        self.dataset = dataset
-        self.subdataset = subdataset
-        self.output_dir = output_dir
-        self.model_size = model_size
-        self.weights = weights
-        self.imagenet_train_path = imagenet_train_path
-        self.mvtec_ad_path = mvtec_ad_path
-        self.mvtec_loco_path = mvtec_loco_path
-        self.train_steps = train_steps
+    '''
+    Class that holds all the config parameters and summarized training and testing results. 
+    '''
+    def __init__(self):
+        self.run_id = 'not_specified'
+        self.dataset = 'mvtec_ad'
+        self.subdataset = 'screw'
+        self.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
+        self.model_size = 'small'
+        self.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
+        self.imagenet_train_path = 'none'
+        self.mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
+        self.mvtec_loco_path = './mvtec_loco_anomaly_detection' # not used
+        self.train_steps = 50000
+        self.test_interval = self.train_steps // 10
+        self.seed = 42
+        self.on_gpu = torch.cuda.is_available()
+        self.on_gpu_init = self.on_gpu#.copy()
+        self.out_channels = 384
+        self.image_size = 256
+        self.test_batch_size = 1
+        self.train_batch_size = 1
+        self.num_workers = 12 if platform.machine().__contains__('x86') else 4
+        self.adapted_score_calc = False
+        self.measure_inference_time = False
+        self.save_anomaly_map = False
+        self.auc_q_best = 0.0
+        self.auc_best = 0.0
+        self.auc_q_best_at = 0
+        self.auc_best_at = 0
+        self.auc_final = 0.0
+        self.auc_q_final = 0.0
+        self.teacher_inference = 0.0
+        self.student_inference = 0.0
+        self.autoencoder_inference = 0.0
+        self.map_normalization_inference = 0.0
+        self.datetime = ''
+        
+    def save_as_json(self):
+        file_name = f'config_{self.run_id}_{self.subdataset}.json'
+        self.datetime = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        path = os.path.join(self.output_dir, self.run_id, 'config', file_name)
+        with open(path, 'w') as f:
+            json.dump(self.__dict__, f)
+            
+    def reset(self):
+        self.auc_q_best = 0.0
+        self.auc_best = 0.0
+        self.auc_q_best_at = 0
+        self.auc_best_at = 0
+        self.auc_final = 0.0
+        self.auc_q_final = 0.0
+        self.teacher_inference = 0.0
+        self.student_inference = 0.0
+        self.autoencoder_inference = 0.0
+        self.map_normalization_inference = 0.0
+        self.datetime = ''
+        
 
 # constants
-seed = 42
-on_gpu = torch.cuda.is_available()
-print(on_gpu)
-on_gpu_init = on_gpu#.copy()
-out_channels = 384
-image_size = 256
-test_interval = 350
-
+# created here at the top level to ensure config is available in all functions
+config = config_helper()
+config.run_id = input('Please enter a unique run id:\n')
+already_done = ['bottle','bottle', 'cable', 'capsule', 'carpet', 'grid', 'own', 'hazelnut']
 # data loading
 default_transform = transforms.Compose([
-    transforms.Resize((image_size, image_size)),
+    transforms.Resize((config.image_size, config.image_size)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
@@ -89,11 +134,9 @@ def train_transform(image):
     return default_transform(image), default_transform(transform_ae(image))
 
 def main():
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-
-    config = config_helper(dataset='mvtec_ad', subdataset='screw', output_dir='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad', model_size='small', weights='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth', imagenet_train_path='none', mvtec_ad_path='/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD', mvtec_loco_path='./mvtec_loco_anomaly_detection', train_steps=70000)
+    torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
+    random.seed(config.seed)
 
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
@@ -105,24 +148,51 @@ def main():
     cats = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'own',
             'hazelnut', 'leather', 'metal_nut', 'pill', 'screw',
             'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+    additional_base_points = [0, 20, 100, 500, 1000, 2000, 3000, 4000, 7500]
     
     for k, cat in enumerate(cats):
+        if cat in already_done:
+            continue
         t_0 = perf_counter()
         print(f'\nProcessing {cat}: {k+1}/{len(cats)}\n ')
+        
         config.subdataset = cat
+        config.reset()
+        # helper variables for tracking the traing progress
+        y_loss_ae = []
+        x_loss_ae = []
+        y_loss_st = []
+        x_loss_st = []
+        y_loss_stae = []
+        x_loss_stae = []
+        y_loss_total = []
+        x_loss_total = []
+        y_auc = []
+        x_auc = []
+        y_auc_q = []
+        x_auc_q = []
+        best_auc = (0.0, 0) 
+        best_auc_q = (0.0, 0)
         
         pretrain_penalty = True
         if config.imagenet_train_path == 'none':
             pretrain_penalty = False
 
         # create output dir
-        train_output_dir = os.path.join(config.output_dir, 'trainings',
-                                        config.dataset, config.subdataset)
-        test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
-                                    config.dataset, config.subdataset, 'test')
-        if not os.path.exists(train_output_dir) and not os.path.exists(test_output_dir):
+        train_output_dir = os.path.join(config.output_dir, config.run_id)# this is the directory that contains all the results 
+        if config.save_anomaly_map: # usually not set so the following is not up to date
+            test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
+                                        config.dataset, config.subdataset, 'test')
+        if not os.path.exists(train_output_dir):
             os.makedirs(train_output_dir)
-            os.makedirs(test_output_dir)
+            os.makedirs(os.path.join(train_output_dir, 'models'))
+            os.makedirs(os.path.join(train_output_dir, 'train_progress'))
+            os.makedirs(os.path.join(train_output_dir, 'config'))
+            os.makedirs(os.path.join(train_output_dir, 'model_statistics'))
+            
+        if config.save_anomaly_map:
+            if not os.path.exists(test_output_dir):
+                os.makedirs(test_output_dir)
 
         # load data
         full_train_set = ImageFolderWithoutTarget(
@@ -134,7 +204,7 @@ def main():
             # mvtec dataset paper recommend 10% validation set
             train_size = int(0.9 * len(full_train_set))
             validation_size = len(full_train_set) - train_size
-            rng = torch.Generator().manual_seed(seed) # random number generator
+            rng = torch.Generator().manual_seed(config.seed) # random number generator
             train_set, validation_set = torch.utils.data.random_split(full_train_set,
                                                             [train_size,
                                                                 validation_size],
@@ -148,48 +218,48 @@ def main():
             raise Exception('Unknown config.dataset')
 
 
-        train_loader = DataLoader(train_set, batch_size=1, shuffle=True,
-                                num_workers=12, pin_memory=True)
+        train_loader = DataLoader(train_set, batch_size=config.train_batch_size, shuffle=True,
+                                num_workers=config.num_workers, pin_memory=True)
         train_loader_infinite = InfiniteDataloader(train_loader)
-        validation_loader = DataLoader(validation_set, batch_size=1)
+        validation_loader = DataLoader(validation_set, batch_size=config.train_batch_size,)
 
         if pretrain_penalty:
             # load pretraining data for penalty
             penalty_transform = transforms.Compose([
-                transforms.Resize((2 * image_size, 2 * image_size)),
+                transforms.Resize((2 * config.image_size, 2 * config.image_size)),
                 transforms.RandomGrayscale(0.3),
-                transforms.CenterCrop(image_size),
+                transforms.CenterCrop(config.image_size),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224,
                                                                     0.225])
             ])
             penalty_set = ImageFolderWithoutTarget(config.imagenet_train_path,
                                                 transform=penalty_transform)
-            penalty_loader = DataLoader(penalty_set, batch_size=1, shuffle=True,
-                                        num_workers=4, pin_memory=True)
+            penalty_loader = DataLoader(penalty_set, batch_size=config.train_batch_size, shuffle=True,
+                                        num_workers=config.num_workers, pin_memory=True)
             penalty_loader_infinite = InfiniteDataloader(penalty_loader)
         else:
             penalty_loader_infinite = itertools.repeat(None)
 
         # create models
         if config.model_size == 'small':
-            teacher = get_pdn_small(out_channels)
-            student = get_pdn_small(2 * out_channels)
+            teacher = get_pdn_small(config.out_channels)
+            student = get_pdn_small(2 * config.out_channels)
         elif config.model_size == 'medium':
-            teacher = get_pdn_medium(out_channels)
-            student = get_pdn_medium(2 * out_channels)
+            teacher = get_pdn_medium(config.out_channels)
+            student = get_pdn_medium(2 * config.out_channels)
         else:
             raise Exception('Unknown config.model_size')
         state_dict = torch.load(config.weights, map_location='cpu')
         teacher.load_state_dict(state_dict)
-        autoencoder = get_autoencoder(out_channels)
+        autoencoder = get_autoencoder(config.out_channels)
 
         # teacher frozen
         teacher.eval()
         student.train()
         autoencoder.train()
 
-        if on_gpu:
+        if config.on_gpu:
             teacher.cuda()
             student.cuda()
             autoencoder.cuda()
@@ -204,7 +274,7 @@ def main():
         tqdm_obj = tqdm(range(config.train_steps))
         for iteration, (image_st, image_ae), image_penalty in zip(
                 tqdm_obj, train_loader_infinite, penalty_loader_infinite):
-            if on_gpu_init:
+            if config.on_gpu_init:
                 image_st = image_st.cuda()
                 image_ae = image_ae.cuda()
                 if image_penalty is not None:
@@ -217,13 +287,13 @@ def main():
             with torch.no_grad():
                 teacher_output_st = teacher(image_st)
                 teacher_output_st = (teacher_output_st - teacher_mean) / teacher_std # normalized output of teacher --> TODO: What is the teacher?
-            student_output_st = student(image_st)[:, :out_channels] # take the first half of channels
+            student_output_st = student(image_st)[:, :config.out_channels] # take the first half of channels
             distance_st = (teacher_output_st - student_output_st) ** 2 # compute the distance between teacher and student
             d_hard = torch.quantile(distance_st, q=0.999) # compute threshold. This is done in order to avoid the model to learn insignificant differences
             loss_hard = torch.mean(distance_st[distance_st >= d_hard]) # take only the values above the threshold and compute the mean
 
             if image_penalty is not None:
-                student_output_penalty = student(image_penalty)[:, :out_channels]
+                student_output_penalty = student(image_penalty)[:, :config.out_channels]
                 loss_penalty = torch.mean(student_output_penalty**2)
                 loss_st = loss_hard + loss_penalty
             else:
@@ -233,7 +303,7 @@ def main():
             with torch.no_grad():
                 teacher_output_ae = teacher(image_ae)
                 teacher_output_ae = (teacher_output_ae - teacher_mean) / teacher_std
-            student_output_ae = student(image_ae)[:, out_channels:] # take the second half of channels
+            student_output_ae = student(image_ae)[:, config.out_channels:] # take the second half of channels
             distance_ae = (teacher_output_ae - ae_output)**2 # compute the distance between 
             distance_stae = (ae_output - student_output_ae)**2
             loss_ae = torch.mean(distance_ae)
@@ -245,25 +315,100 @@ def main():
             optimizer.step()
             scheduler.step()
 
+            if iteration == 0:
+                # set buffer
+                loss_ae_buffer = []
+                loss_st_buffer = []
+                loss_stae_buffer = []
+                loss_total_buffer = []
+            
+                
             if iteration % 10 == 0:
                 tqdm_obj.set_description(
                     "Current loss: {:.4f}  ".format(loss_total.item()))
             
+            loss_ae_buffer.append(loss_ae.item())
+            loss_st_buffer.append(loss_st.item())
+            loss_stae_buffer.append(loss_stae.item())
+            loss_total_buffer.append(loss_total.item())
+                
+            if iteration % 100 == 0:
+                y_loss_ae.append(np.mean(loss_ae_buffer))
+                x_loss_ae.append(iteration)
+                y_loss_st.append(np.mean(loss_st_buffer))
+                x_loss_st.append(iteration)
+                y_loss_stae.append(np.mean(loss_stae_buffer))
+                x_loss_stae.append(iteration)
+                y_loss_total.append(np.mean(loss_total_buffer))
+                x_loss_total.append(iteration)
+                # reset buffer
+                loss_ae_buffer = []
+                loss_st_buffer = []
+                loss_stae_buffer = []
+                loss_total_buffer = []
+            
+            
             # intermediate evaluation
-            if iteration % test_interval == 0 and iteration > 0:
-                calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp_test')
+            if iteration % config.test_interval == 0 or iteration in additional_base_points:
+                auc, auc_q = calibrate_eval_save(teacher, student, autoencoder, 
+                                    teacher_mean, teacher_std, 
+                                    train_loader, validation_loader, test_set, 
+                                    train_output_dir, iteration, '')
+                y_auc.append(auc)
+                x_auc.append(iteration)
+                y_auc_q.append(auc_q)
+                x_auc_q.append(iteration)
+                
+                if auc > best_auc[0]:
+                    best_auc = (auc, iteration)
+                if auc_q > best_auc_q[0]:
+                    best_auc_q = (auc_q, iteration)
+                
         # final evaluation
-        calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'final')
+        iteration = config.train_steps
+        auc, auc_q = calibrate_eval_save(teacher, student, autoencoder, 
+                            teacher_mean, teacher_std, 
+                            train_loader, validation_loader, test_set, 
+                            train_output_dir, iteration=iteration, phase = 'final')
+        y_auc.append(auc)
+        x_auc.append(iteration)
+        y_auc_q.append(auc_q)
+        x_auc_q.append(iteration)
+        
+        # save training progress as json
+        with open(os.path.join(train_output_dir, 'train_progress', f'train_progress_{config.subdataset}.json'), 'w') as f:
+            json.dump({'y_loss_ae': y_loss_ae, 'x_loss_ae': x_loss_ae,
+                        'y_loss_st': y_loss_st, 'x_loss_st': x_loss_st,
+                        'y_loss_stae': y_loss_stae, 'x_loss_stae': x_loss_stae,
+                        'y_loss_total': y_loss_total, 'x_loss_total': x_loss_total,
+                        'y_auc': y_auc, 'x_auc': x_auc,
+                        'y_auc_q': y_auc_q, 'x_auc_q': x_auc_q}, f)
+        
+        if auc > best_auc[0]:
+            best_auc = (auc, iteration)
+        if auc_q > best_auc_q[0]:
+            best_auc_q = (auc_q, iteration)
+            
+        # update config
+        config.auc_final = auc
+        config.auc_q_final = auc_q
+        config.auc_best = best_auc[0]
+        config.auc_q_best = best_auc_q[0]
+        config.auc_best_at = best_auc[1]
+        config.auc_q_best_at = best_auc_q[1]
+        # save config as json
+        config.save_as_json()
+          
         t_1 = perf_counter()
-        print(f'Time taken: {(t_1 - t_0)/60} min')
+        print(f'Time taken: {round((t_1 - t_0)/60, 2)} min')
 
 @torch.no_grad()
 def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
          q_st_start, q_st_end, q_ae_start, q_ae_end, test_output_dir=None,
-         save_anomaly_map = False, desc='Running inference', q_flag=False, measure_inference_time=False):
+         desc='Running inference', q_flag=False):
     y_true = []
     y_score = []
-    if measure_inference_time:
+    if config.measure_inference_time:
         teacher_inference_times = []
         student_inference_times = []
         autoencoder_inference_times = []
@@ -272,19 +417,20 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
         on_gpu = True if next(student.parameters()).is_cuda else False
     else:
         on_gpu = False
-    for image, target, path in tqdm(test_set, desc=desc):
+    for image, _, path in tqdm(test_set, desc=desc):
         orig_width = image.width
         orig_height = image.height
         image = default_transform(image)
         image = image[None]
         if on_gpu:
             image = image.cuda()
-        if measure_inference_time:
+        if config.measure_inference_time:
             map_combined, _, _, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = predict(
                 image=image, teacher=teacher, student=student,
                 autoencoder=autoencoder, teacher_mean=teacher_mean,
                 teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
-                q_ae_start=q_ae_start, q_ae_end=q_ae_end, measure_inference_time=measure_inference_time)
+                q_ae_start=q_ae_start, q_ae_end=q_ae_end, out_channels=config.out_channels,
+                measure_inference_time=config.measure_inference_time)
             teacher_inference_times.append(teacher_inference)
             student_inference_times.append(student_inference)
             autoencoder_inference_times.append(autoencoder_inference)
@@ -294,15 +440,16 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
                 image=image, teacher=teacher, student=student,
                 autoencoder=autoencoder, teacher_mean=teacher_mean,
                 teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
-                q_ae_start=q_ae_start, q_ae_end=q_ae_end, measure_inference_time=measure_inference_time)
-        if save_anomaly_map:
+                q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+                measure_inference_time=config.measure_inference_time)
+        if config.save_anomaly_map:
             map_combined = torch.nn.functional.pad(map_combined, (4, 4, 4, 4))
             map_combined = torch.nn.functional.interpolate(
                 map_combined, (orig_height, orig_width), mode='bilinear')
         map_combined = map_combined[0, 0].cpu().numpy()
 
         defect_class = os.path.basename(os.path.dirname(path))
-        if test_output_dir is not None and save_anomaly_map:
+        if test_output_dir is not None and config.save_anomaly_map:
             img_nm = os.path.split(path)[1].split('.')[0]
             if not os.path.exists(os.path.join(test_output_dir, defect_class)):
                 os.makedirs(os.path.join(test_output_dir, defect_class))
@@ -312,16 +459,21 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
         y_true_image = 0 if defect_class == 'good' else 1
         
         # y_score_image = np.max(map_combined) # TODO weighted average, not just max
-        y_score_image = np.sort(map_combined.flatten())[-int(0.01*len(map_combined.flatten()))]
+        if config.adapted_score_calc:
+            highest_scores = np.sort(map_combined.flatten())[-int(0.01*len(map_combined.flatten()))]
+            weights = np.arange(1, len(highest_scores)+1)
+            y_score_image = np.average(highest_scores, weights=weights)
+        else:
+            y_score_image = np.max(map_combined)
         y_true.append(y_true_image)
         y_score.append(y_score_image)
     auc = roc_auc_score(y_true=y_true, y_score=y_score)
-    if measure_inference_time:
+    if config.measure_inference_time:
         teacher_inference_mean = np.mean(teacher_inference_times)
         student_inference_mean = np.mean(student_inference_times)
         autoencoder_inference_mean = np.mean(autoencoder_inference_times)
         map_normalization_inference_mean = np.mean(map_normalization_inference_times)
-    if measure_inference_time:
+    if config.measure_inference_time:
         return auc * 100, teacher_inference_mean, student_inference_mean, autoencoder_inference_mean, map_normalization_inference_mean
     else:
         return auc * 100
@@ -348,10 +500,10 @@ def predict(image, teacher, student, autoencoder, teacher_mean, teacher_std,
     autoencoder_output = autoencoder(image)
     if measure_inference_time:
         t_3 = perf_counter()
-    map_st = torch.mean((teacher_output - student_output[:, :out_channels])**2,
+    map_st = torch.mean((teacher_output - student_output[:, :config.out_channels])**2,
                         dim=1, keepdim=True)
     map_ae = torch.mean((autoencoder_output -
-                         student_output[:, out_channels:])**2,
+                         student_output[:, config.out_channels:])**2,
                         dim=1, keepdim=True)
     if q_st_start is not None:
         map_st = 0.1 * (map_st - q_st_start) / (q_st_end - q_st_start)
@@ -378,7 +530,7 @@ def map_normalization(validation_loader, teacher, student, autoencoder,
     for image, _ in tqdm(validation_loader, desc=desc):
         if on_gpu:
             image = image.cuda()
-        map_combined, map_st, map_ae = predict(
+        _, map_st, map_ae = predict(
             image=image, teacher=teacher, student=student,
             autoencoder=autoencoder, teacher_mean=teacher_mean,
             teacher_std=teacher_std)
@@ -477,14 +629,6 @@ def quantize_model(teacher, student, autoencoder, calibration_loader=None, backe
                         x = inputs[idx]
                         # print(x.shape)
                         _ = model(x)
-
-        # from PIL import Image
-        # data_transforms = transforms.Compose([
-        #             transforms.Resize((256, 256), Image.LANCZOS),
-        #             transforms.ToTensor(),
-        #             transforms.CenterCrop(256),
-        #             transforms.Normalize(mean=[0.485, 0.456, 0.406],
-        #                                 std=[0.229, 0.224, 0.225])]) # from imagenet
         
         calibrate_model(teacher, calibration_loader, [0])
         calibrate_model(student, calibration_loader, [0,1])
@@ -497,24 +641,19 @@ def quantize_model(teacher, student, autoencoder, calibration_loader=None, backe
     return teacher.eval(), student.eval(), autoencoder.eval()
 
 # @torch.no_grad()  
-def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, phase = 'tmp'):
+def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std, train_loader, validation_loader, test_set, train_output_dir, iteration, phase = 'tmp'):
 
     # run intermediate evaluation
     teacher.eval()
     student.eval()
     autoencoder.eval()
-    
-    print(train_output_dir)
-    if not os.path.exists(train_output_dir):
-        print('here')
-        os.makedirs(train_output_dir)
-    
-    torch.save(teacher, os.path.join(train_output_dir,
-                                        f'teacher_{phase}.pth'))
-    torch.save(student, os.path.join(train_output_dir,
-                                        f'student_{phase}.pth'))
-    torch.save(autoencoder, os.path.join(train_output_dir,
-                                        f'autoencoder_{phase}.pth'))
+
+    torch.save(teacher, os.path.join(train_output_dir, 'models',
+                                        f'teacher_{phase}_{iteration}.pth'))
+    torch.save(student, os.path.join(train_output_dir, 'models',
+                                        f'student_{phase}_{iteration}.pth'))
+    torch.save(autoencoder, os.path.join(train_output_dir, 'models',
+                                        f'autoencoder_{phase}_{iteration}.pth'))
 
     print('Quantizing models...')
     st = perf_counter()
@@ -523,12 +662,12 @@ def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std
     
     teacher_q_mean, teacher_q_std = teacher_normalization(teacher_q, train_loader, q_flag=True)
 
-    torch.save(teacher_q.state_dict(), os.path.join(train_output_dir,
-                                        f'teacher_q_{phase}.pth'))
-    torch.save(student_q.state_dict(), os.path.join(train_output_dir,
-                                        f'student_q_{phase}.pth'))
-    torch.save(autoencoder_q.state_dict(), os.path.join(train_output_dir,
-                                        f'autoencoder_q_{phase}.pth'))
+    torch.save(teacher_q.state_dict(), os.path.join(train_output_dir, 'models',
+                                        f'teacher_q_{phase}_{iteration}.pth'))
+    torch.save(student_q.state_dict(), os.path.join(train_output_dir, 'models',
+                                        f'student_q_{phase}_{iteration}.pth'))
+    torch.save(autoencoder_q.state_dict(), os.path.join(train_output_dir, 'models',
+                                        f'autoencoder_q_{phase}_{iteration}.pth'))
     
     q_st_start, q_st_end, q_ae_start, q_ae_end = map_normalization( # only done with non quantized model
         validation_loader=validation_loader, teacher=teacher,
@@ -542,8 +681,6 @@ def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std
         teacher_mean=teacher_q_mean, teacher_std=teacher_q_std,
         desc='Intermediate map normalization', q_flag=True)
 
-    print(q_st_start, q_st_end, q_ae_start, q_ae_end)
-    print(q_st_start_q, q_st_end_q, q_ae_start_q, q_ae_end_q)
     # non quantized model
     auc = test(
         test_set=test_set, teacher=teacher, student=student,
@@ -552,26 +689,27 @@ def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std
         q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
         test_output_dir=None, desc='Intermediate inference')
     print('Intermediate image auc - non quantized: {:.4f}'.format(auc))
+    
     # quantized model
-    auc_q_1 = test(
-        test_set=test_set, teacher=teacher_q, student=student_q,
-        autoencoder=autoencoder_q, teacher_mean=teacher_mean,
-        teacher_std=teacher_std, q_st_start=q_st_start,
-        q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
-        test_output_dir=None, desc='Intermediate inference',
-        q_flag=True)
-    print('Intermediate image auc - quantized (just models): {:.4f}'.format(auc_q_1))
+    # auc_q_1 = test(
+    #     test_set=test_set, teacher=teacher_q, student=student_q,
+    #     autoencoder=autoencoder_q, teacher_mean=teacher_mean,
+    #     teacher_std=teacher_std, q_st_start=q_st_start,
+    #     q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+    #     test_output_dir=None, desc='Intermediate inference',
+    #     q_flag=True)
+    # print('Intermediate image auc - quantized (just models): {:.4f}'.format(auc_q_1))
 
-    auc_q_2 = test(
-        test_set=test_set, teacher=teacher_q, student=student_q,
-        autoencoder=autoencoder_q, teacher_mean=teacher_q_mean,
-        teacher_std=teacher_q_std, q_st_start=q_st_start_q,
-        q_st_end=q_st_end_q, q_ae_start=q_ae_start_q,
-        q_ae_end=q_ae_end_q, test_output_dir=None,
-        desc='Intermediate inference', q_flag=True)
-    print('Intermediate image auc - quantized (with map norm and teacher mean/std): {:.4f}'.format(auc_q_2))
+    # auc_q_2 = test(
+    #     test_set=test_set, teacher=teacher_q, student=student_q,
+    #     autoencoder=autoencoder_q, teacher_mean=teacher_q_mean,
+    #     teacher_std=teacher_q_std, q_st_start=q_st_start_q,
+    #     q_st_end=q_st_end_q, q_ae_start=q_ae_start_q,
+    #     q_ae_end=q_ae_end_q, test_output_dir=None,
+    #     desc='Intermediate inference', q_flag=True)
+    # print('Intermediate image auc - quantized (with map norm and teacher mean/std): {:.4f}'.format(auc_q_2))
 
-    auc_q_3 = test(
+    auc_q_3 = test( # seems like the best choice
         test_set=test_set, teacher=teacher_q, student=student_q,
         autoencoder=autoencoder_q, teacher_mean=teacher_q_mean,
         teacher_std=teacher_q_std, q_st_start=q_st_start,
@@ -580,16 +718,17 @@ def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std
         desc='Intermediate inference', q_flag=True)
     print('Intermediate image auc - quantized (with teacher mean/std): {:.4f}'.format(auc_q_3))
 
-    auc_q_4 = test(
-        test_set=test_set, teacher=teacher_q, student=student_q,
-        autoencoder=autoencoder_q, teacher_mean=teacher_mean,
-        teacher_std=teacher_std, q_st_start=q_st_start_q,
-        q_st_end=q_st_end_q, q_ae_start=q_ae_start_q,
-        q_ae_end=q_ae_end_q, test_output_dir=None,
-        desc='Intermediate inference', q_flag=True)
-    print('Intermediate image auc - quantized (with map norm): {:.4f}'.format(auc_q_4))
+    # auc_q_4 = test(
+    #     test_set=test_set, teacher=teacher_q, student=student_q,
+    #     autoencoder=autoencoder_q, teacher_mean=teacher_mean,
+    #     teacher_std=teacher_std, q_st_start=q_st_start_q,
+    #     q_st_end=q_st_end_q, q_ae_start=q_ae_start_q,
+    #     q_ae_end=q_ae_end_q, test_output_dir=None,
+    #     desc='Intermediate inference', q_flag=True)
+    # print('Intermediate image auc - quantized (with map norm): {:.4f}'.format(auc_q_4))
     
     # save statistics
+    
     statistics = {
         'q_st_start': q_st_start.item(),
         'q_st_end': q_st_end.item(),
@@ -606,10 +745,11 @@ def calibrate_eval_save(teacher, student, autoencoder, teacher_mean, teacher_std
         'auc': auc,
         'auc_q': auc_q_3
     }
-    with open(os.path.join(train_output_dir, f'statistics_{phase}.json'), 'w') as f:
+    with open(os.path.join(train_output_dir, 'model_statistics', f'statistics_{phase}_{iteration}.json'), 'w') as f:
         json.dump(statistics, f)
+        
+    return auc, auc_q_3
 
-    # teacher frozen
             
 if __name__ == '__main__':
     main()
