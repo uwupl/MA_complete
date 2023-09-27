@@ -89,7 +89,7 @@ def main():
     #     config.model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
     #     config.backend = 'x86'
     # config = config_helper()#dataset='mvtec_ad', subdataset='cable', output_dir=output_dir, model_size='small', weights=weights, mvtec_ad_path=mvtec_ad_path, model_base_dir=model_base_dir)
-
+    from efficientad import config
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
     elif config.dataset == 'mvtec_loco':
@@ -147,7 +147,7 @@ def main():
     
     t_0 = perf_counter()
     print('Quantizing models...')
-    teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder, calibration_loader=validation_loader, backend=backend)
+    teacher_q, student_q, autoencoder_q = quantize_model(teacher, student, autoencoder, calibration_loader=validation_loader, backend=config.backend)
     print(teacher)
     out = teacher(torch.randn(1, 3, 256, 256))
     t_1 = perf_counter()
