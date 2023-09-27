@@ -249,9 +249,10 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
         run_summary_df.to_csv(file_path, index=False)
     return run_summary_df
 
+
 def plot_results(labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length, 
                  fig_size = (20,10), title = 'Comparison', only_auc = False, width = 0.4, show_f_length = False, show_storage = False, 
-                 loc_legend = (1.15, 0.06), font_scaler = 1.0,
+                 loc_legend = (1.15, 0.06), bar_labels = ['feature extraction', 'embedding', 'search', 'calc scores'],
                  save_fig = False, res_path = PLOT_DIR, show = True):
     '''
     visualizes results in bar chart
@@ -277,26 +278,15 @@ def plot_results(labels, feature_extraction, embedding, search, calc_distances, 
     # labels[0] += '\n' + 'ReLU (default)'
     
     x = np.arange(len(labels))  # the label locations
-    width = width  # the width of the bars
-    ### temp ###
-    #Direct input 
-    # plt.rcParams['text.latex.preamble']=[r"\usepackage{lmodern}"]
-    # #Options
-    # params = {'text.usetex' : True,
-    #         'font.size' : 11,
-    #         'font.family' : 'lmodern',
-    #         'text.latex.unicode': True,
-    #         }
-    # plt.rcParams.update(params)     
-    ### temp ###
+    # width = width  # the width of the bars
     fig, ax = plt.subplots(figsize=fig_size, dpi=300)
 
     if not only_auc:
         ax_2 = ax.twinx()
-        rects1 = ax.bar(x - 0.5*width, feature_extraction, width, label='feature extraction', color = 'crimson')
-        rects2 = ax.bar(x - 0.5*width, embedding, width, label='embedding', bottom=feature_extraction, color = 'purple')
-        rects3 = ax.bar(x - 0.5*width, search, width, label='search', bottom=list(np.array(embedding) + np.array(feature_extraction)), color = 'slateblue')
-        rects4 = ax.bar(x - 0.5*width, calc_distances, width, label='calc scores',bottom=list(np.array(embedding) + np.array(feature_extraction) + np.array(search)), color = 'darkgoldenrod')
+        rects1 = ax.bar(x - 0.5*width, feature_extraction, width, label=bar_labels[0], color = 'crimson')
+        rects2 = ax.bar(x - 0.5*width, embedding, width, label=bar_labels[1], bottom=feature_extraction, color = 'purple')
+        rects3 = ax.bar(x - 0.5*width, search, width, label=bar_labels[2], bottom=list(np.array(embedding) + np.array(feature_extraction)), color = 'slateblue')
+        rects4 = ax.bar(x - 0.5*width, calc_distances, width, label=bar_labels[3],bottom=list(np.array(embedding) + np.array(feature_extraction) + np.array(search)), color = 'darkgoldenrod')
         # rects4 = ax.bar(x - 0.5*width, anomaly_map, width, label='anomaly map',bottom=list(np.array(embedding_cpu) + np.array(feature_extraction_cpu) + np.array(search_memory)), color = 'darkgoldenrod')
         rects_1 = ax_2.bar(x + 0.25 * width, own_auc, width*0.3, label = 'Own Auc', color = 'black')
         rects_2 = ax_2.bar(x + 0.75 * width, MVTechAD_auc, width*0.3, label = 'MVTechAD Auc', color = 'grey')
@@ -353,7 +343,6 @@ def plot_results(labels, feature_extraction, embedding, search, calc_distances, 
         
     if show:
         plt.show()
-        
 def extract_vals_for_plot(summary_df: pd.DataFrame):
     '''
     Takes pandas DataFrame and extracts values for plotting

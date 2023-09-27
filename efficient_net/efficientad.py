@@ -60,7 +60,7 @@ class config_helper():
     def __init__(self):
         self.run_id = 'not_specified'
         self.dataset = 'mvtec_ad'
-        self.subdataset = 'screw'
+        self.subdataset = 'bottle'
         self.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
         self.model_size = 'small'
         self.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
@@ -462,7 +462,7 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
                 image=image, teacher=teacher, student=student,
                 autoencoder=autoencoder, teacher_mean=teacher_mean,
                 teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
-                q_ae_start=q_ae_start, q_ae_end=q_ae_end, out_channels=config.out_channels,
+                q_ae_start=q_ae_start, q_ae_end=q_ae_end,
                 measure_inference_time=config.measure_inference_time)
             teacher_inference_times.append(teacher_inference)
             student_inference_times.append(student_inference)

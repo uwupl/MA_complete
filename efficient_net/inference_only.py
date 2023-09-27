@@ -90,6 +90,8 @@ def main():
     #     config.backend = 'x86'
     # config = config_helper()#dataset='mvtec_ad', subdataset='cable', output_dir=output_dir, model_size='small', weights=weights, mvtec_ad_path=mvtec_ad_path, model_base_dir=model_base_dir)
     from efficientad import config
+    config.measure_inference_time = True
+    
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
     elif config.dataset == 'mvtec_loco':
@@ -135,7 +137,7 @@ def main():
         os.path.join(dataset_path, config.subdataset, 'test'))
     # if config.dataset == 'mvtec_ad':
     # mvtec dataset paper recommend 10% validation set
-    train_size = int(0.9 * len(full_train_set))
+    train_size = int(0.98 * len(full_train_set)) # edited from 0.9 to 0.98
     validation_size = len(full_train_set) - train_size
     rng = torch.Generator().manual_seed(seed) # random number generator
     _, validation_set = torch.utils.data.random_split(full_train_set,
@@ -153,6 +155,7 @@ def main():
     t_1 = perf_counter()
     print(f'Quantization took {t_1 - t_0} seconds')
 
+    import json
     with open(os.path.join(model_dir, f'statistics_{phase}.json'), 'rb') as f: # _{phase}
         statistics = json.load(f)#, allow_pickle=True)
    
@@ -180,18 +183,19 @@ def main():
         teacher_std=teacher_q_std, q_st_start=q_st_start,
         q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
         test_output_dir=None, desc='Intermediate inference',
-        q_flag=True, measure_inference_time=True)
+        q_flag=True)
     t_1 = perf_counter()
     print(f'Inference took {t_1 - t_0} seconds')
     # fp32 models
     t_0 = perf_counter()
-    auc, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = test(
-        test_set=test_set, teacher=teacher, student=student,
-        autoencoder=autoencoder, teacher_mean=teacher_mean,
-        teacher_std=teacher_std, q_st_start=q_st_start,
-        q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
-        test_output_dir=None, desc='Intermediate inference',
-        q_flag=False, measure_inference_time=True)
+    # auc, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = test(
+    #     test_set=test_set, teacher=teacher, student=student,
+    #     autoencoder=autoencoder, teacher_mean=teacher_mean,
+    #     teacher_std=teacher_std, q_st_start=q_st_start,
+    #     q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+    #     test_output_dir=None, desc='Intermediate inference',
+    #     q_flag=False)
+    auc, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = 0, 0, 0, 0, 0 # tmp
     t_1 = perf_counter()
     print(f'Inference took {t_1 - t_0} seconds')
     
@@ -210,6 +214,17 @@ def main():
     print(f'map_normalization_inference: {map_normalization_inference*1e3} ms')
     print(f'map_normalization_inference_q: {map_normalization_inference_q*1e3} ms')
     
+    # save runtimes as json
+    import json
+    with open(os.path.join(model_dir, f'runtime_{phase}.json'), 'w') as f:
+        json.dump({'teacher_inference': teacher_inference*1e3,
+                   'teacher_inference_q': teacher_inference_q*1e3,
+                   'student_inference': student_inference*1e3,
+                   'student_inference_q': student_inference_q*1e3,
+                   'autoencoder_inference': autoencoder_inference*1e3,
+                   'autoencoder_inference_q': autoencoder_inference_q*1e3,
+                   'map_normalization_inference': map_normalization_inference*1e3,
+                   'map_normalization_inference_q': map_normalization_inference_q*1e3}, f)
 
 if __name__ == '__main__':
     main()
