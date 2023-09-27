@@ -140,25 +140,28 @@ def get_default_PatchCoreModel():
     model = PatchCore()
     model.backbone_id = 'WRN50'
     model.layers_needed = [2,3]
+    model.pooling_embedding = False
     model.pooling_strategy = 'default' # nn.AvgPool2d(kernel_size=3, stride=1, padding=1)
     model.exclude_relu = False # relu won't be used for final layer, in order to not lose negative values
     model.sigmoid_in_last_layer = False # sigmoid will be used for final layer
     model.normalize = False # performs normalization on the feature vector; mean = 0, std = 1
+    # subsampling
+    model.coreset_sampling_method = 'patchcore_greedy_approx'
+    
     # backbone reduction
     model.layer_cut = True
     model.prune_output_layer = (False, [])
-    # nearest neighbor search
-    model.coreset_sampling_ratio = 0.01 #1%
-    model.faiss_quantized = False
+    # model.coreset_sampling_ratio = 0.01 #1%
+    model.specific_number_of_examples = 1000
+    # score calculation
+    model.patchcore_scorer = True
+    model.adapted_score_calc = False
+    model.n_neighbors = 4
+    model.n_next_patches = 16 # only for adapted_score_calc
+    # nn search
     model.faiss_standard = False
     model.own_knn = True
-    # score calculation
-    model.adapted_score_calc = False
-    model.n_neighbors = 9
-    model.n_next_patches = 5 # only for adapted_score_calc
-    # nn search
-    model.faiss_standard = True
-    model.own_knn = False
+    model.patchcore_score_patches = False
     # channel reduction
     model.reduce_via_std = False
     model.reduce_via_entropy = False

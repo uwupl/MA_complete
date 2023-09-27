@@ -108,9 +108,8 @@ def _embed(features, forward_modules, patch_maker, provide_patch_shapes=False):#
     # print("features intern 5: ", features.shape)
     if provide_patch_shapes:
         return features, patch_shapes
-    return features
-
-
+    else:
+        return features
 
 
 ### helper functions
@@ -194,17 +193,26 @@ class PatchMaker:
         return x.reshape(batchsize, -1, *x.shape[1:])
 
     def score(self, x):
+        # was_numpy = False
+        # if isinstance(x, np.ndarray):
+        #     was_numpy = True
+        #     x = torch.from_numpy(x)
+        # while x.ndim > 2:
+        #     x = torch.max(x, dim=-1).values
+        # if x.ndim == 2:
+        #     if self.top_k > 1:
+        #         x = torch.topk(x, self.top_k, dim=1).values.mean(1)
+        #     else:
+        #         x = torch.max(x, dim=1).values
+        # if was_numpy:
+        #     return x.numpy()
+        # return x
         was_numpy = False
         if isinstance(x, np.ndarray):
             was_numpy = True
             x = torch.from_numpy(x)
-        while x.ndim > 2:
+        while x.ndim > 1:
             x = torch.max(x, dim=-1).values
-        if x.ndim == 2:
-            if self.top_k > 1:
-                x = torch.topk(x, self.top_k, dim=1).values.mean(1)
-            else:
-                x = torch.max(x, dim=1).values
         if was_numpy:
             return x.numpy()
         return x

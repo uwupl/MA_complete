@@ -67,7 +67,10 @@ class MVTecDataset(Dataset):
         return img_tot_paths, gt_tot_paths, tot_labels, tot_types
 
     def __len__(self):
-        return len(self.img_paths)
+        if len(self.img_paths) > 1000:
+            return 1000
+        else:
+            return len(self.img_paths)
 
     def __getitem__(self, idx):
         img_path, gt, label, img_type = self.img_paths[idx], self.gt_paths[idx], self.labels[idx], self.types[idx]

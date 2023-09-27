@@ -168,6 +168,7 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
     calc_distances_total = np.array([]) 
     calc_scores_total = np.array([])    
     total_time_total = np.array([])
+    coreset_size = np.array([])
     for k, run_dir in enumerate(this_run_dirs):
         file_name = 'summary_' + run_dir + '.csv'
         file_path = os.path.join(res_path, run_dir,'csv',file_name)
@@ -195,6 +196,7 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
         calc_distances = np.max(np.float32(pd_summary.loc['calc_distances_[ms]'].values))
         calc_scores = np.max(np.float32(pd_summary.loc['calc_scores_[ms]'].values))
         total_time = np.max(np.float32(pd_summary.loc['total_time_[ms]'].values))
+        feature_length = np.max(np.float32(pd_summary.loc['resulting_feature_length'].values))
         # coreset_size = np.max(np.float32(pd_summary.loc['coreset_size'].values))
         if (k - correction_number) == 0:
             # img_auc_total = img_auc
@@ -208,6 +210,7 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
             calc_distances_total = calc_distances
             calc_scores_total = calc_scores
             total_time_total = total_time
+            feature_length_total = feature_length
         else:
             # img_auc_total = np.vstack((img_auc_total, img_auc))
             img_auc_total_mean = np.vstack((img_auc_total_mean, img_auc_mean))
@@ -220,19 +223,20 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
             calc_distances_total = np.vstack((calc_distances_total, calc_distances))
             calc_scores_total = np.vstack((calc_scores_total, calc_scores))
             total_time_total = np.vstack((total_time_total, total_time))
+            feature_length_total = np.vstack((feature_length_total, feature_length))
 
     if type(img_auc_total_mean) == np.ndarray:
         num_runs = img_auc_total_mean.shape[0]
     else:
         num_runs = 1
-    summary_np = np.zeros((10, num_runs))
-    helper_list = [img_auc_total_mean, img_auc_MVTechAD_total, img_auc_total_own, backbone_storage_total, backbone_flops_total, feature_extraction_total, embedding_of_feature_total, calc_distances_total, calc_scores_total, total_time]
+    summary_np = np.zeros((11, num_runs))
+    helper_list = [img_auc_total_mean, img_auc_MVTechAD_total, img_auc_total_own, backbone_storage_total, backbone_flops_total, feature_extraction_total, embedding_of_feature_total, calc_distances_total, calc_scores_total, total_time, feature_length_total]
     for i, entry in enumerate(helper_list):
         summary_np[i, :] = entry.flatten()
     run_summary_dict = {}
     for k in range(len(img_auc_total_mean)):
         # print(k)
-        for a, b in zip(summary_np[:,k].flatten(), ['img_auc_mean', 'img_auc_MVTechAD', 'img_auc_own','backbone_storage', 'backbone_flops', 'feature_extraction', 'embedding_of_feature', 'calc_distances', 'calc_scores', 'total_time']):
+        for a, b in zip(summary_np[:,k].flatten(), ['img_auc_mean', 'img_auc_MVTechAD', 'img_auc_own','backbone_storage', 'backbone_flops', 'feature_extraction', 'embedding_of_feature', 'calc_distances', 'calc_scores', 'total_time', 'feature_length']):
             if k == 0:
                 run_summary_dict[b] = [float(a)]
             else:
@@ -245,13 +249,32 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
         run_summary_df.to_csv(file_path, index=False)
     return run_summary_df
 
-def plot_results(labels, feature_extraction, embedding, search, calc_scores, own_auc, MVTechAD_auc, storage, fig_size = (20,10), title = 'Comparison', only_auc = False, width = 0.4, save_fig = False, res_path = PLOT_DIR, show = True):
+def plot_results(labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length, 
+                 fig_size = (20,10), title = 'Comparison', only_auc = False, width = 0.4, show_f_length = False, show_storage = False, 
+                 loc_legend = (1.15, 0.06), font_scaler = 1.0,
+                 save_fig = False, res_path = PLOT_DIR, show = True):
     '''
     visualizes results in bar chart
     '''
-    for k in range(len(labels)):
-        # labels[k] = labels[k]
-        labels[k] = labels[k] + '\n' + str(round(storage[k],2)) + ' MB'
+    
+    if show_f_length:
+        new_labels = []
+        for k in range(len(labels)):
+            new_labels += [labels[k] + '\n' + str(int(feature_length[k])) + ' feature-length']
+        del labels
+        labels = new_labels
+        del new_labels
+        
+    if show_storage:
+        new_labels = []
+        for k in range(len(labels)):
+            new_labels += [labels[k] + '\n' + str(round(storage[k],2)) + ' MB']
+        del labels
+        labels = new_labels
+        del new_labels
+    
+    # print(labels)
+    # labels[0] += '\n' + 'ReLU (default)'
     
     x = np.arange(len(labels))  # the label locations
     width = width  # the width of the bars
@@ -267,12 +290,13 @@ def plot_results(labels, feature_extraction, embedding, search, calc_scores, own
     # plt.rcParams.update(params)     
     ### temp ###
     fig, ax = plt.subplots(figsize=fig_size, dpi=300)
+
     if not only_auc:
         ax_2 = ax.twinx()
         rects1 = ax.bar(x - 0.5*width, feature_extraction, width, label='feature extraction', color = 'crimson')
         rects2 = ax.bar(x - 0.5*width, embedding, width, label='embedding', bottom=feature_extraction, color = 'purple')
         rects3 = ax.bar(x - 0.5*width, search, width, label='search', bottom=list(np.array(embedding) + np.array(feature_extraction)), color = 'slateblue')
-        rects4 = ax.bar(x - 0.5*width, calc_scores, width, label='calc scores',bottom=list(np.array(embedding) + np.array(feature_extraction) + np.array(search)), color = 'darkgoldenrod')
+        rects4 = ax.bar(x - 0.5*width, calc_distances, width, label='calc scores',bottom=list(np.array(embedding) + np.array(feature_extraction) + np.array(search)), color = 'darkgoldenrod')
         # rects4 = ax.bar(x - 0.5*width, anomaly_map, width, label='anomaly map',bottom=list(np.array(embedding_cpu) + np.array(feature_extraction_cpu) + np.array(search_memory)), color = 'darkgoldenrod')
         rects_1 = ax_2.bar(x + 0.25 * width, own_auc, width*0.3, label = 'Own Auc', color = 'black')
         rects_2 = ax_2.bar(x + 0.75 * width, MVTechAD_auc, width*0.3, label = 'MVTechAD Auc', color = 'grey')
@@ -280,36 +304,47 @@ def plot_results(labels, feature_extraction, embedding, search, calc_scores, own
         # rects3 = ax.bar(x, )
 
         # Add some text for labels, title and custom x-axis tick labels, etc.
-        ax.set_ylabel('elapsed time per sample [ms] (mean)')
-        ax.set_title(title)
-        ax_2.set_ylabel('Auccarcy')
+        ax.set_ylabel('elapsed time per sample [ms] (mean)')#, fontsize=8*font_scaler)
+        ax.set_title(title)#, fontsize=10*font_scaler)
+        ax_2.set_ylabel('Auccarcy')#, fontsize=8*font_scaler)
         ax_2.yaxis.set_major_formatter(mpl.ticker.PercentFormatter())
+        ax_2.set_ylim([50,105])
         ax.set_xticks(x, labels)
-        ax.legend()
-        ax_2.legend()
+        # l1 = ax.legend()#loc='upper right')
+        # l2 = ax_2.legend()#loc='upper left')
 
-        ax.bar_label(rects1, padding=3)
+        ax.bar_label(rects1, padding=3)#, fontsize=6*font_scaler)
         # ax.bar_label(rects2, padding=3)
         # ax.bar_label(rects3, padding=3)
-        ax.bar_label(rects4, padding=3, fmt='%1.3f')
-        ax_2.bar_label(rects_1, padding=3,fmt='%1.1f')
-        ax_2.bar_label(rects_2, padding=3,fmt='%1.1f')
-        ax_2.set_yticks([20,40,60,80,100])
-        ax_2.set
+        ax.bar_label(rects4, padding=3, fmt='%1.3f')#, fontsize=6*font_scaler)
+        ax_2.bar_label(rects_1, padding=3,fmt='%1.1f')#, fontsize=6*font_scaler)
+        ax_2.bar_label(rects_2, padding=3,fmt='%1.1f')#, fontsize=6*font_scaler)
+        ax_2.set_yticks([50,70,80,90,100]) # 60 excluded for legend
+        # ax_2.set
+        
+        handles_1, labels_1 = ax.get_legend_handles_labels()
+        handles_2, labels_2 = ax_2.get_legend_handles_labels()
+        
+        both_handles = handles_1 + handles_2
+        both_labels = labels_1 + labels_2
+        
+        ax.legend(both_handles, both_labels, loc='lower right', bbox_to_anchor=loc_legend, bbox_transform=ax_2.transAxes)#, fontsize=8*font_scaler)
     else:
         rects_1 = ax.bar(x - 0.5*width, own_auc, width, label = 'Own Auc', color = 'black')
         rects_2 = ax.bar(x + 0.5*width, MVTechAD_auc, width, label = 'MVTechAD Auc', color = 'grey')
-        ax.set_ylabel('Auccarcy')
+        ax.set_ylabel('Auccarcy')#, fontsize=8*font_scaler)
         ax.yaxis.set_major_formatter(mpl.ticker.PercentFormatter())
-        ax.set_title(title)
+        ax.set_title(title)#, fontsize=10*font_scaler)
         ax.set_xticks(x, labels)
         ax.legend()
         ax.bar_label(rects_1, padding=3,fmt='%1.1f')
         ax.bar_label(rects_2, padding=3,fmt='%1.1f')
-        ax.set_yticks([20,40,60,80,100])
+        ax.set_yticks([50,60,70,80,90,100])
     
-    fig.tight_layout()
-
+    fig.tight_layout()    
+    current_font_size = mpl.rcParams['font.size']
+    mpl.rcParams.update({'font.size': current_font_size*font_scaler})
+    
     if save_fig:
         file_name = str(int(time.time())) + title.replace(' ', '_') + '_' + '.svg'
         if not os.path.exists(res_path):
@@ -331,9 +366,10 @@ def extract_vals_for_plot(summary_df: pd.DataFrame):
     own_auc = summary_df.loc[:, 'img_auc_own'].values*100
     MVTechAD_auc = summary_df.loc[:, 'img_auc_MVTechAD'].values*100
     storage = summary_df.loc[:, 'backbone_storage'].values
-    coreset_size = get_coreset_size_length_inner_process(summary_df) 
+    # coreset_size = get_coreset_size_length_inner_process(summary_df)
+    feature_length = summary_df.loc[:, 'feature_length'].values
     
-    return labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, coreset_size
+    return labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length
 
 def remove_failed_run_dirs(failed_runs: np.ndarray):
     '''
@@ -402,26 +438,25 @@ def get_coreset_size_length_inner_process(pd_summary):
     print(res)
     return res
 
-def sort_by_attribute(attribute, labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage):
+def sort_by_attribute(attribute, labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length):
     '''
     returns a sorted dataframe by attribute.
     Give as attribute a copy of one of the other arguments.
     '''
     order = np.argsort(attribute)
-    return labels[order], feature_extraction[order], embedding[order], search[order], calc_distances[order], own_auc[order], MVTechAD_auc[order], storage[order]
+    return labels[order], feature_extraction[order], embedding[order], search[order], calc_distances[order], own_auc[order], MVTechAD_auc[order], storage[order], feature_length[order] 
 
-def filter_by_contain_in_label_str(labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage ,to_contain: list, to_delete: list):
+def filter_by_contain_in_label_str(labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length ,to_contain: list, to_delete: list):
     '''
     returns a list of labels that contain to_contain and do not contain to_delete
     '''
     for pattern in to_contain:
         mask_1 = [True if label.__contains__(pattern) else False for label in labels]
-        labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage = labels[mask_1], feature_extraction[mask_1], embedding[mask_1], search[mask_1], calc_distances[mask_1], own_auc[mask_1], MVTechAD_auc[mask_1], storage[mask_1]
-
+        labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length = labels[mask_1], feature_extraction[mask_1], embedding[mask_1], search[mask_1], calc_distances[mask_1], own_auc[mask_1], MVTechAD_auc[mask_1], storage[mask_1], feature_length[mask_1]
     for pattern in to_delete:
         mask_2 = [True if not label.__contains__(pattern) else False for label in labels]
-        labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage = labels[mask_2], feature_extraction[mask_2], embedding[mask_2], search[mask_2], calc_distances[mask_2], own_auc[mask_2], MVTechAD_auc[mask_2], storage[mask_2]
-    return labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage
+        labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length = labels[mask_2], feature_extraction[mask_2], embedding[mask_2], search[mask_2], calc_distances[mask_2], own_auc[mask_2], MVTechAD_auc[mask_2], storage[mask_2], feature_length[mask_2]
+    return labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length
 
 def shorten_labels(labels, to_delete: list):
     '''
@@ -436,22 +471,23 @@ def get_plot_ready_data(this_run_id, res_path, to_contain, to_delete, take_n_bes
     returns data, that is ready to be plotted. Specify filters by the to_contain and to_delete lists. optional.
     '''
     summary_pd = get_summary_df(this_run_id, res_path)
-    labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, coreset_size = extract_vals_for_plot(summary_pd)
-    for k in range(len(coreset_size)):
-        labels[k] = labels[k] + '\n(' + str(coreset_size[k]) + ')'
+    labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length = extract_vals_for_plot(summary_pd)
+    # for k in range(len(coreset_size)):
+        # labels[k] = labels[k] + '\n(' + str(coreset_size[k]) + ')'
     print('Raw: #', len(labels))
     # if attribute_to_sort_by is not None:
-    labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage = sort_by_attribute(MVTechAD_auc, labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage)
+    labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length = sort_by_attribute(MVTechAD_auc, labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length) #
     if take_n_best is not None:
-        labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage = labels[-take_n_best:], feature_extraction[-take_n_best:], embedding[-take_n_best:], search[-take_n_best:], calc_distances[-take_n_best:], own_auc[-take_n_best:], MVTechAD_auc[-take_n_best:], storage[-take_n_best:]
+        labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length = labels[-take_n_best:], feature_extraction[-take_n_best:], embedding[-take_n_best:], search[-take_n_best:], calc_distances[-take_n_best:], own_auc[-take_n_best:], MVTechAD_auc[-take_n_best:], storage[-take_n_best:], feature_length[-take_n_best:]
     
-    labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage = filter_by_contain_in_label_str(labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, to_contain=to_contain, to_delete=to_delete)
+    labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length = filter_by_contain_in_label_str(labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length, to_contain=to_contain, to_delete=to_delete)
     print('Filtered: #',len(labels))
-
+    print('1: ',labels)
     labels = shorten_labels(labels, to_delete=to_contain) # and mention in title of plot instead in order to keep somehow short labels
     for k in range(len(labels)):
         labels[k] = labels[k].replace('-','\n')
-    return labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage
+    print('2: ',labels)
+    return labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length
 
 def remove_test_dir():
     '''

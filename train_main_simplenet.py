@@ -22,6 +22,7 @@ from utils.datasets import MVTecDataset
 from torch.utils.data import DataLoader
 from time import perf_counter
 from torchinfo import summary
+import json
 
 def init_weight(m):
     '''
@@ -91,12 +92,14 @@ class Projection(torch.nn.Module):
         x = self.layers(x)
         return x
 
+
+
 class SimpleNet(torch.nn.Module):
     def __init__(self, device):
         """anomaly detection class."""
         super(SimpleNet, self).__init__()
         self.device = device
-        self.input_shape = (3,224,224)
+        self.input_shape = (3,256,256)
         self.only_img_lvl = True
         self.measure_inference = True
         if self.measure_inference:
@@ -105,7 +108,7 @@ class SimpleNet(torch.nn.Module):
         # Backbone
         self.backbone_id = 'RN18' # analogous to model_id
         self.layers_to_extract_from = [2,3] # analogous to layers_needed
-        self.quantize_qint8 = True
+        self.quantize_qint8 = False
         # if self.quantize_qint8: because argumens have to be initialized before they can be tweaked from the outside
         self.device = 'cpu'
         self.calibration_dataset = 'random'
@@ -143,15 +146,15 @@ class SimpleNet(torch.nn.Module):
         self.top_k = 3
         self.batch_size_test = 1
         # Directory
-        self.model_dir = r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/simplenet'
+        self.output_dir = r'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/simplenet'
         # self.run_id = 'none' #not used here
         self.category = 'pill'
         self.dataset_path = MVTEC_DIR
         self.time_stamp = f'{int(time.time())}'
         self.group_id = 'not_specified'
         # Data transforms
-        self.load_size = 256
-        self.input_size = 224
+        self.load_size = 256+32
+        self.input_size = 256
         self.category_wise_statistics = False
         if self.category_wise_statistics:
             filename = 'statistics.json'
@@ -175,6 +178,9 @@ class SimpleNet(torch.nn.Module):
                         transforms.ToTensor(),
                         transforms.CenterCrop(self.input_size)])
         self.inv_normalize = transforms.Normalize(mean=list(np.divide(np.multiply(-1,means), stds)), std=list(np.divide(1, stds))) 
+        
+        # auxilary variables
+        self.i_iter = 0
         
         # initialize the network
         self.forward_modules = torch.nn.ModuleDict({})
@@ -203,30 +209,17 @@ class SimpleNet(torch.nn.Module):
         self.discriminator = Discriminator(self.target_embed_dimensions, self.dsc_layers, self.dsc_hidden).to(self.device)
         self.dsc_opt = torch.optim.AdamW(self.discriminator.parameters(), self.dsc_lr, weight_decay=1e-5)
         self.dsc_schl = torch.optim.lr_scheduler.CosineAnnealingLR(self.dsc_opt, self.meta_epochs, eta_min=self.dsc_lr*.4)
-        
-
 
     def set_model_dir(self):
-        # print("model_dir: ",self.model_dir)
-        # self.model_dir = model_dir
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.model_dir = os.path.join(self.output_dir, self.group_id, 'models')
         os.makedirs(self.model_dir, exist_ok=True)
-        self.ckpt_dir = os.path.join(self.model_dir, self.group_id, self.category)
-        os.makedirs(self.ckpt_dir, exist_ok=True)
-        # self.tb_dir = os.path.join(self.ckpt_dir, "tb")
-        # os.makedirs(self.tb_dir, exist_ok=True)
-        # self.logger = TBWrapper(self.tb_dir) #SummaryWriter(log_dir=tb_dir)
-    
-    # def embed(self, data):
-    #     if isinstance(data, torch.utils.data.DataLoader):
-    #         features = []
-    #         for image in data:
-    #             if isinstance(image, dict):
-    #                 image = image["image"]
-    #                 input_image = image.to(torch.float).to(self.device)
-    #             with torch.no_grad():
-    #                 features.append(_embed(input_image, self.forward_modules, self.patch_maker))
-    #         return features
-    #     return _embed(data, self.forward_modules, self.patch_maker)
+        self.summary_dir = os.path.join(self.output_dir, self.group_id, 'summary')
+        os.makedirs(self.summary_dir, exist_ok=True)
+        self.latences_dir = os.path.join(self.output_dir, self.group_id, 'latences')
+        os.makedirs(self.latences_dir, exist_ok=True)
+        self.train_progress_dir = os.path.join(self.output_dir, self.group_id, 'train_progress')
+        os.makedirs(self.train_progress_dir, exist_ok=True)
 
     def test(self):#, training_data, test_data):
         '''
@@ -234,19 +227,14 @@ class SimpleNet(torch.nn.Module):
         '''
         self.set_model_dir()
 
-        self.log_path = os.path.join(os.path.dirname(__file__), "results","simplenet", f"{self.group_id}", "csv")
-        if not os.path.exists(self.log_path):
-            os.makedirs(self.log_path)
-        self.latences_filename = f'latences_{self.group_id}_{self.time_stamp}.csv'
         # self.acc_filename = f'acc_{self.group_id}_{self.time_stamp}.csv'acc_filename
         state_dict = {}
         # training_data = self.train_dataloader()
         test_data = self.test_dataloader()
-        
-        ckpt_path = os.path.join(self.ckpt_dir, "ckpt.pth")
         ### test
-        if os.path.exists(ckpt_path): # model is already trained - we therefore assume training has already be done
-            state_dict = torch.load(ckpt_path, map_location=self.device)
+        file_path = os.path.join(self.model_dir, f'discriminator_{self.category}.pth')
+        if os.path.exists(file_path): # model is already trained - we therefore assume training has already be done
+            state_dict = torch.load(file_path, map_location=self.device)
             if 'discriminator' in state_dict:
                 self.discriminator.load_state_dict(state_dict['discriminator'])
                 if "pre_projection" in state_dict:
@@ -269,7 +257,7 @@ class SimpleNet(torch.nn.Module):
             #, index=[batch_idx])
             if self.measure_inference:
                 pd_run_times = pd.DataFrame(run_times)
-                file_path = os.path.join(self.log_path, self.latences_filename)
+                file_path = os.path.join(self.latences_dir, self.latences_filename)
                 if os.path.exists(file_path):
                     pd_run_times_ = pd.read_csv(file_path, index_col=0)
                     pd_run_times = pd.concat([pd_run_times_, pd_run_times], axis=0)
@@ -277,7 +265,6 @@ class SimpleNet(torch.nn.Module):
                 else:
                     pd_run_times.to_csv(file_path)
 
-                file_path = os.path.join(self.log_path, self.latences_filename)
                 pd_run_times_ = pd.read_csv(file_path, index_col=0)
                 pd_results = pd.DataFrame({'img_auc': [auroc]*pd_run_times_.shape[0], 'pixel_auc': [full_pixel_auroc]*pd_run_times_.shape[0]})
                 pd_run_times = pd.concat([pd_run_times_, pd_results], axis=1)
@@ -336,7 +323,6 @@ class SimpleNet(torch.nn.Module):
                     'number_of_reps': self.number_of_reps,
                     'warm_up_reps': self.warm_up_reps,
                     'model_dir': self.model_dir,
-                    'ckpt_dir': self.ckpt_dir,
                     'backbone_storage_[MB]': estimated_total_size,
                     'backbone_mult_adds_[M]': number_of_mult_adds,
                     'feature_extraction_[ms]': pd_run_times['#1 feature extraction cpu'].mean() if self.measure_inference else 0.0,
@@ -346,7 +332,7 @@ class SimpleNet(torch.nn.Module):
                     'total_time_[ms]': pd_run_times['#11 whole process cpu'].mean() if self.measure_inference else 0.0,
                     'img_auc_[%]': auroc                
                     }
-                file_path = os.path.join(self.log_path, f'summary_{self.group_id}.csv')
+                file_path = os.path.join(self.summary_dir, f'summary_{self.group_id}.csv')
                 if os.path.exists(file_path):
                     pd_sum = pd.read_csv(file_path, index_col=0)
                     pd_sum_current = pd.Series(opt_dict).to_frame(self.category)#, index='category')
@@ -363,16 +349,27 @@ class SimpleNet(torch.nn.Module):
 
     def train(self):
         self.set_model_dir()
-
+        
+        self.y_loss_fake = []
+        self.x_loss_fake = []
+        self.y_loss_true = []
+        self.x_loss_true = []
+        self.y_loss_total = []
+        self.x_loss_total = []
+        
+        self.y_auc = []
+        self.x_auc = []
+        
+        # reset iteration counter
+        self.i_iter = 0
+        
         self.log_path = os.path.join(os.path.dirname(__file__), "results","simplenet", f"{self.group_id}", "csv")
         if not os.path.exists(self.log_path):
             os.makedirs(self.log_path)
-        self.latences_filename = f'latences_{self.group_id}_{self.time_stamp}.csv'
+        self.latences_filename = f'latences_{self.category}.csv'
         state_dict = {}
         training_data = self.train_dataloader()
         test_data = self.test_dataloader()
-        
-        ckpt_path = os.path.join(self.ckpt_dir, "ckpt.pth")
         
         def update_state_dict():
             state_dict["discriminator"] = OrderedDict({
@@ -384,6 +381,30 @@ class SimpleNet(torch.nn.Module):
                     for k, v in self.pre_projection.state_dict().items()})
         # actual training loop
         best_record = None
+        
+        if not self.only_img_lvl:
+            if not self.measure_inference:
+                scores, segmentations, features, labels_gt, masks_gt = self.predict(test_data)
+            else:
+                scores, segmentations, features, labels_gt, masks_gt, run_times = self.predict(test_data)
+        else:
+            if not self.measure_inference:
+                scores,_,_,labels_gt,_ = self.predict(test_data)
+            else:
+                scores,_,_,labels_gt,_, run_times = self.predict(test_data)
+            segmentations, features, masks_gt = None, None, None
+        auroc, full_pixel_auroc, pro = self._evaluate(scores, segmentations, features, labels_gt, masks_gt)
+        
+        self.y_auc.append(auroc)
+        self.x_auc.append(self.i_iter)
+
+        if best_record is None:
+            best_record = [auroc, full_pixel_auroc, pro]
+            update_state_dict()
+        elif auroc > best_record[0]:
+            best_record = [auroc, full_pixel_auroc, pro]
+            update_state_dict()
+        
         for i_mepoch in range(self.meta_epochs):
 
             self._train_discriminator(training_data)
@@ -405,6 +426,9 @@ class SimpleNet(torch.nn.Module):
                     print('Time for discriminator: ', t_3_cpu)
                 segmentations, features, masks_gt = None, None, None
             auroc, full_pixel_auroc, pro = self._evaluate(scores, segmentations, features, labels_gt, masks_gt)
+            
+            self.y_auc.append(auroc)
+            self.x_auc.append(self.i_iter)
 
             if best_record is None:
                 best_record = [auroc, full_pixel_auroc, pro]
@@ -421,7 +445,22 @@ class SimpleNet(torch.nn.Module):
                   f"  P-AUROC{round(full_pixel_auroc, 4)}(MAX:{round(best_record[1], 4)}) -----"
                   f"  PRO-AUROC{round(pro, 4)}(MAX:{round(best_record[2], 4)}) -----")
         
-        torch.save(state_dict, ckpt_path)
+        # save train progress as json
+        train_progress = {
+            'y_loss_fake': self.y_loss_fake,
+            'x_loss_fake': self.x_loss_fake,
+            'y_loss_true': self.y_loss_true,
+            'x_loss_true': self.x_loss_true,
+            'y_loss_total': self.y_loss_total,
+            'x_loss_total': self.x_loss_total,
+            'y_auc': self.y_auc,
+            'x_auc': self.x_auc
+            }
+        
+        with open(os.path.join(self.train_progress_dir, f'train_progress_{self.category}.json'), 'w') as fp:
+            json.dump(train_progress, fp)
+        
+        torch.save(state_dict, os.path.join(self.model_dir, f'discriminator_{self.category}.pth'))
         
         return best_record
     
@@ -449,7 +488,7 @@ class SimpleNet(torch.nn.Module):
         self.discriminator.train()
         # self.feature_enc.eval()
         # self.feature_dec.eval()
-        i_iter = 0
+        
         # LOGGER.info(f"Training discriminator...")
         with tqdm.tqdm(total=self.gan_epochs) as pbar:
             for i_epoch in range(self.gan_epochs):
@@ -464,7 +503,7 @@ class SimpleNet(torch.nn.Module):
                         self.proj_opt.zero_grad()
                     # self.dec_opt.zero_grad()
 
-                    i_iter += 1
+                    self.i_iter += 1
                     img, _, _, _, _ = data_item#["image"]
                     img = img.to(torch.float).to(self.device)
                     # features = 
@@ -502,6 +541,13 @@ class SimpleNet(torch.nn.Module):
                     loss = true_loss.mean() + fake_loss.mean()
                     # self.logger.logger.add_scalar("loss", loss, self.logger.g_iter)
                     # self.logger.step()
+                    
+                    self.y_loss_fake.append(fake_loss.mean().detach().cpu().item())
+                    self.x_loss_fake.append(self.i_iter)
+                    self.y_loss_true.append(true_loss.mean().detach().cpu().item())
+                    self.x_loss_true.append(self.i_iter)
+                    self.y_loss_total.append(loss.detach().cpu().item())
+                    self.x_loss_total.append(self.i_iter)
 
                     loss.backward()
                     if self.pre_proj > 0:
@@ -778,22 +824,36 @@ class SimpleNet(torch.nn.Module):
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = SimpleNet(device)
-    number_of_samples = [1]#, 10, 100, 1000, 10000]
-    dataset_type = ['random']#, 'imagenet']
-    model.category = 'cable'
+    
+    cats = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 
+            'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'own', 'zipper']
     model.meta_epochs = 40
-    model.measure_inference
-    for dataset in dataset_type:
-        for no_samples in number_of_samples:
-            model.num_images_calib = no_samples
-            model.calibration_dataset = dataset
-            model.group_id = f'test_2908_2'
-            model.measure_inference = False
-            print('\nTraining...\n')
-            model.train()#model.train_dataloader(), model.test_dataloader())
-            print('\nTesting...\n')
-            model.measure_inference = True
-            model.test() # equal to test! Model is already trained, so this model is loaded and the inference is done directly
+    model.group_id = '1909_trial'
+    for cat in cats:
+        model.category = cat
+        model.measure_inference = False
+        print(f'\nTraining...{cat}\n')
+        model.train()
+        print(f'\nTesting...{cat}\n')
+        model.measure_inference = True
+        model.test()
+    
+    # number_of_samples = [1]#, 10, 100, 1000, 10000]
+    # dataset_type = ['random']#, 'imagenet']
+    # model.category = 'cable'
+    # model.meta_epochs = 40
+    # model.measure_inference
+    # for dataset in dataset_type:
+    #     for no_samples in number_of_samples:
+    #         model.num_images_calib = no_samples
+    #         model.calibration_dataset = dataset
+    #         model.group_id = f'test_2908_2'
+    #         model.measure_inference = False
+    #         print('\nTraining...\n')
+    #         model.train()#model.train_dataloader(), model.test_dataloader())
+    #         print('\nTesting...\n')
+    #         model.measure_inference = True
+    #         model.test() # equal to test! Model is already trained, so this model is loaded and the inference is done directly
     # model.predict(model.test_d
     
 

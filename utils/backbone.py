@@ -167,11 +167,11 @@ class Backbone(nn.Module):
         takes the model and prune it if desired. Mainly, hooks are placed here. For Nets with BasicBlock.
         '''
         if output.shape[1] == int(64):
-            selected_idx = self.selected_idx_dict[1]
+            selected_idx = self.selected_idx_dict[1]# if len(self.selected_idx_dict[1]) == 0 else list(range(int(64)))
         elif output.shape[1] == int(128):
-            selected_idx = self.selected_idx_dict[2]
+            selected_idx = self.selected_idx_dict[2]# if len(self.selected_idx_dict[2]) == 0 else list(range(int(128)))
         elif output.shape[1] == int(256):
-            selected_idx = self.selected_idx_dict[3]
+            selected_idx = self.selected_idx_dict[3]# if len(self.selected_idx_dict[3]) == 0 else list(range(int(256)))
         self.features.append(output[:,selected_idx,:,:])
 
     def procedure_resnet(self):
@@ -266,6 +266,8 @@ class Backbone(nn.Module):
                     if k > 0:
                         to_subtract = current_boundary
                         current_boundary += 2**int(7+layer)
+                    # if len(selected_idx_list) == 0:
+                        # selected_idx_list = list(range(current_boundary))
                     self.selected_idx_dict[layer] += [int(channel-to_subtract) for channel in selected_idx_list if channel < current_boundary]
                     selected_idx_list = [channel for channel in selected_idx_list if int(channel-to_subtract) not in self.selected_idx_dict[layer]]
                     
@@ -307,8 +309,12 @@ class Backbone(nn.Module):
                 self.selected_idx_dict = {layer: [] for layer in self.layers_needed}
                 current_boundary = 2**int(5+min(self.layers_needed)) # for resnet18: 1st: 64, 2nd: 128, 3rd: 256, 4th: 512
                 to_subtract = int(0)
+                if len(selected_idx_list) == 0:
+                    selected_idx_list = list(range(2**int(5+max(self.layers_needed))))
                 for k, layer in enumerate(self.layers_needed):
                     if k > 0:
+                        # if len(selected_idx_list) == 0:
+                        #     selected_idx_list = list(range(current_boundary))
                         to_subtract = current_boundary
                         current_boundary += 2**int(5+layer)
                     self.selected_idx_dict[layer] += [int(channel-to_subtract) for channel in selected_idx_list if channel < current_boundary]
@@ -323,7 +329,7 @@ class Backbone(nn.Module):
             elif layer_to_include == int(2):
                 input_size = (1,128,28,28)
             elif layer_to_include == int(3):
-                input_size = (1,256,14,14)
+                input_size = (1,256,14,14) 
             elif layer_to_include == int(4):
                 input_size = (1,512,7,7)
             if len(self.layers_needed) > 1:
@@ -341,7 +347,7 @@ class Backbone(nn.Module):
                 if len(self.layers_needed) > 1:
                     for layer in self.layers_needed[:-1]:
                         list(self.model.children())[0][layer+3][-1].register_forward_hook(self.hook_ResNet)
-                self.model[-1].register_forward_hook(self.hook_t)
+                self.model[-1].register_forward_hook(self.hook_t) # last layer
 
     def procedure_convnext(self):
         if self.layer_cut and not self.prune_output_layer[0] and self.hooks_needed:
@@ -456,13 +462,31 @@ class OwnBasicblock(torch.nn.Module):
         self.idx_selected = idx_selected
         self.prune_output_layer = prune_output_layer
         if len(self.idx_selected) > 0 and prune_output_layer:
+            
+            device = next(self.block_1.parameters()).device
+
+            for param in self.block_1.parameters():
+                param.requires_grad = True
+                    
+            for param in self.block_2.parameters():
+                param.requires_grad = True
+                    
+                    
             channels_not_selected = [i for i in range(input_size[1]) if i not in self.idx_selected]
-            DG = tp.DependencyGraph().build_dependency(self.block_2, example_inputs=torch.rand(input_size))
+            DG = tp.DependencyGraph().build_dependency(self.block_2, example_inputs=torch.rand(input_size).to(device))
             group = DG.get_pruning_group(self.block_2.final_3, tp.prune_conv_out_channels, idxs=channels_not_selected)
             print(group)
             if DG.check_pruning_group(group): # avoid full pruning, i.e., channels=0.  
                 group.prune()
         
+            for param in self.block_1.parameters():
+                param.requires_grad = False
+                    
+            for param in self.block_2.parameters():
+                param.requires_grad = False
+            
+            
+
     def forward(self, x):
         if self.prune_output_layer:
             identity = x[:, self.idx_selected, ...]
