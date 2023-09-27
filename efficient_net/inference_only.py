@@ -188,14 +188,14 @@ def main():
     print(f'Inference took {t_1 - t_0} seconds')
     # fp32 models
     t_0 = perf_counter()
-    # auc, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = test(
-    #     test_set=test_set, teacher=teacher, student=student,
-    #     autoencoder=autoencoder, teacher_mean=teacher_mean,
-    #     teacher_std=teacher_std, q_st_start=q_st_start,
-    #     q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
-    #     test_output_dir=None, desc='Intermediate inference',
-    #     q_flag=False)
-    auc, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = 0, 0, 0, 0, 0 # tmp
+    auc, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = test(
+        test_set=test_set, teacher=teacher, student=student,
+        autoencoder=autoencoder, teacher_mean=teacher_mean,
+        teacher_std=teacher_std, q_st_start=q_st_start,
+        q_st_end=q_st_end, q_ae_start=q_ae_start, q_ae_end=q_ae_end,
+        test_output_dir=None, desc='Intermediate inference',
+        q_flag=False)
+    # auc, teacher_inference, student_inference, autoencoder_inference, map_normalization_inference = 0, 0, 0, 0, 0 # tmp
     t_1 = perf_counter()
     print(f'Inference took {t_1 - t_0} seconds')
     
