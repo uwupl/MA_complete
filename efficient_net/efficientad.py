@@ -91,6 +91,8 @@ class config_helper():
         self.autoencoder_inference = 0.0
         self.map_normalization_inference = 0.0
         self.datetime = ''
+        self.backend = 'x86'
+        self.model_base_dir = None
         
     def save_as_json(self):
         file_name = f'config_{self.run_id}_{self.subdataset}.json'
@@ -117,6 +119,20 @@ class config_helper():
 # created here at the top level to ensure config is available in all functions
 config = config_helper()
 config.run_id = input('Please enter a unique run id:\n')
+raspberry_pi = False if platform.machine().__contains__('x86') else True
+    # config = config_helper()
+if raspberry_pi:
+    config.output_dir = '/home/jo/MA/code/MA_complete/results/'
+    config.weights = '/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth'
+    config.mvtec_ad_path = '/home/jo/MA/MVTechAD'
+    config.model_base_dir = '/home/jo/MA/code/MA_complete/quantized_models'
+    config.backend = 'qnnpack'
+else:
+    config.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
+    config.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
+    config.mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
+    config.model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
+    config.backend = 'x86'
 already_done = ['bottle','bottle', 'cable', 'capsule', 'carpet', 'grid', 'own', 'hazelnut']
 # data loading
 default_transform = transforms.Compose([

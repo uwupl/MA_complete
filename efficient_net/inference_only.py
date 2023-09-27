@@ -1,4 +1,4 @@
-from efficientad import train_transform, test, quantize_model
+from efficientad import train_transform, test, quantize_model, config_helper
 from tqdm import tqdm
 from time import perf_counter
 import os
@@ -47,15 +47,15 @@ else:
 #                         help='Downloaded Mvtec LOCO dataset')
 #     return parser.parse_args()
 
-class config_helper():
-    def __init__(self, dataset, subdataset, output_dir, model_size, weights, mvtec_ad_path, model_base_dir):
-        self.dataset = dataset
-        self.subdataset = subdataset
-        self.output_dir = output_dir
-        self.model_size = model_size
-        self.weights = weights
-        self.mvtec_ad_path = mvtec_ad_path
-        self.model_base_dir = model_base_dir
+# class config_helper():
+#     def __init__(self, dataset, subdataset, output_dir, model_size, weights, mvtec_ad_path, model_base_dir):
+#         self.dataset = dataset
+#         self.subdataset = subdataset
+#         self.output_dir = output_dir
+#         self.model_size = model_size
+#         self.weights = weights
+#         self.mvtec_ad_path = mvtec_ad_path
+#         self.model_base_dir = model_base_dir
 
 # constants
 seed = 42
@@ -75,19 +75,20 @@ def main():
     Loads quantized (!) teacher, student and autoencoder models from the specified weights.
     '''
     # raspberry_pi = True
-    if raspberry_pi:
-        output_dir = '/home/jo/MA/code/MA_complete/results/'
-        weights = '/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth'
-        mvtec_ad_path = '/home/jo/MA/MVTechAD'
-        model_base_dir = '/home/jo/MA/code/MA_complete/quantized_models'
-        backend = 'qnnpack'
-    else:
-        output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
-        weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
-        mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
-        model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
-        backend = 'x86'
-    config = config_helper(dataset='mvtec_ad', subdataset='cable', output_dir=output_dir, model_size='small', weights=weights, mvtec_ad_path=mvtec_ad_path, model_base_dir=model_base_dir)
+    # config = config_helper()
+    # if raspberry_pi:
+    #     config.output_dir = '/home/jo/MA/code/MA_complete/results/'
+    #     config.weights = '/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth'
+    #     config.mvtec_ad_path = '/home/jo/MA/MVTechAD'
+    #     config.model_base_dir = '/home/jo/MA/code/MA_complete/quantized_models'
+    #     config.backend = 'qnnpack'
+    # else:
+    #     config.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
+    #     config.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
+    #     config.mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
+    #     config.model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
+    #     config.backend = 'x86'
+    # config = config_helper()#dataset='mvtec_ad', subdataset='cable', output_dir=output_dir, model_size='small', weights=weights, mvtec_ad_path=mvtec_ad_path, model_base_dir=model_base_dir)
 
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
