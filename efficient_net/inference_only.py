@@ -22,41 +22,6 @@ else:
     from .common import get_autoencoder, get_pdn_small, get_pdn_medium, \
         ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 
-
-# def get_argparse():
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('-d', '--dataset', default='mvtec_ad',
-#                         choices=['mvtec_ad', 'mvtec_loco'])
-#     parser.add_argument('-s', '--subdataset', default='screw',
-#                         help='One of 15 sub-datasets of Mvtec AD or 5' +
-#                              'sub-datasets of Mvtec LOCO')
-#     parser.add_argument('-o', '--output_dir', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad')
-#     parser.add_argument('-m', '--model_size', default='small',
-#                         choices=['small', 'medium'])
-#     parser.add_argument('-w', '--weights', default='/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth')
-#     parser.add_argument('-i', '--imagenet_train_path',
-#                         default='none',
-#                         help='Set to "none" to disable ImageNet' +
-#                              'pretraining penalty. Or see README.md to' +
-#                              'download ImageNet and set to ImageNet path')
-#     parser.add_argument('-a', '--mvtec_ad_path',
-#                         default=MVTEC_DIR,
-#                         help='Downloaded Mvtec AD dataset')
-#     parser.add_argument('-b', '--mvtec_loco_path',
-#                         default='./mvtec_loco_anomaly_detection',
-#                         help='Downloaded Mvtec LOCO dataset')
-#     return parser.parse_args()
-
-# class config_helper():
-#     def __init__(self, dataset, subdataset, output_dir, model_size, weights, mvtec_ad_path, model_base_dir):
-#         self.dataset = dataset
-#         self.subdataset = subdataset
-#         self.output_dir = output_dir
-#         self.model_size = model_size
-#         self.weights = weights
-#         self.mvtec_ad_path = mvtec_ad_path
-#         self.model_base_dir = model_base_dir
-
 # constants
 seed = 42
 on_gpu = torch.cuda.is_available()
@@ -77,6 +42,7 @@ def main():
 
     from efficientad import config
     config.measure_inference_time = True
+    config.subdataset = 'cable'
     
     if config.dataset == 'mvtec_ad':
         dataset_path = config.mvtec_ad_path
@@ -112,7 +78,7 @@ def main():
     # teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=None)
     
     # load weights
-    phase = 'final_50000' # or 'final'
+    phase = 'final' # or 'final'
 
     teacher = torch.load(os.path.join(model_dir, f'teacher_{phase}.pth'), map_location=torch.device('cpu'))
     student = torch.load(os.path.join(model_dir, f'student_{phase}.pth'), map_location=torch.device('cpu'))
