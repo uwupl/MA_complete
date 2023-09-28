@@ -204,6 +204,7 @@ class PatchCore(pl.LightningModule):
         
         self.patchcore_score_patches = False
         self.patchcore_scorer = False
+        self.patch_size = None
         
         # define mean and weights to be able to run model in beginning (which determines shape of output)
         self.mean = None
@@ -403,7 +404,7 @@ class PatchCore(pl.LightningModule):
         # get Backbone
         # temp for ensuring model is loaded correctly
         # if False:
-        del self.backbone
+        # del self.backbone
         if self.cuda_active and torch.cuda.is_available():
             self.backbone = torch.load(os.path.join(self.embedding_dir_path,'backbone.pth')).cuda()
             if self.quantize_qint8:
@@ -421,6 +422,11 @@ class PatchCore(pl.LightningModule):
                                         
         self.backbone.eval()
         # print(self.backbone)
+        if (not self.pooling_embedding) or self.patchcore_scorer:
+            self.patch_size = 3
+            self.patch_stride = 1
+            self.top_k = 3
+            self.patch_maker = PatchMaker(patchsize=self.patch_size,top_k=self.top_k, stride=self.patch_stride)
         
         # load feature adaptor
         if self.adapt_feature:
@@ -1331,51 +1337,73 @@ class PatchCore(pl.LightningModule):
             except:
                 estimated_total_size = 0.0
                 number_of_mult_adds = 0.0
-            opt_dict = {
-                'backbone': self.backbone_id,
-                'pooling_strategy': str(self.pooling_strategy),
-                'layers_needed': self.layers_needed,
-                'layer_cut': self.layer_cut,
-                'exclude_relu': self.exclude_relu,
-                'sigmoid_in_last_layer': self.sigmoid_in_last_layer,
-                'prune_output_layer': f'{self.prune_output_layer[0]} #{len(self.prune_output_layer[1])}',
-                'prune_structured_nni': f'{self.prune_structured_nni[0]} (Percentage: {self.sparsity}; Method: {self.prune_structured_nni[2]})',
-                'prune_l1_unstructured': f'{self.prune_l1_unstructured[0]} (Percentage: {self.prune_l1_unstructured[1]})',
-                'prune_pytorch_pruning': f'{self.prune_torch_pruning[0]} (Percentage: {self.prune_torch_pruning[1]})',
-                'iterative_pruning': f'{self.iterative_pruning[0]} (Iterations: {self.iterative_pruning[1]})',
-                'pretrain_for_channel_selection': self.pretrain_for_channel_selection_copy,
-                'adapted_score_calc': self.adapted_score_calc,
-                'n_neighbors': self.n_neighbors,
-                'n_next_patches': self.n_next_patches,
-                'coreset_sampling_ratio': self.coreset_sampling_ratio,
-                'reduce_via_std': self.reduce_via_std,
-                'reduce_via_entropy': self.reduce_via_entropy,
-                'quantize_model_with_nni': self.quantize_model_with_nni,
-                'reduce_via_entropy_normed': self.reduce_via_entropy_normed,
-                'reduce_factor': self.reduction_factor,
-                'coreset_size': self.embedding_coreset.shape[0] if not self.multiple_coresets[0] else self.embedding_coreset.shape[1],
-                'resulting_feature_length': self.embedding_coreset.shape[1] if not self.multiple_coresets[0] else self.embedding_coreset.shape[2],
-                'resolution_of_patches': np.sqrt(self.output_shape[1]),
-                'normalize_output': self.normalize,
-                'faiss_standard': self.faiss_standard,
-                'faiss_quantized': self.faiss_quantized,
-                'own_knn': self.own_knn,
-                'distance_metric': self.metrices[self.metric_id],
-                'multiple_coresets': 1 if not self.multiple_coresets[0] else self.multiple_coresets[1],
-                'feature_adaptor': self.adapt_feature,
-                'own_qint8': self.quantize_qint8,
-                'torchvision_qint8': self.quantize_qint8_torchvision,
-                'pooling_strategy': str(self.pooling_strategy),
-                'category_wise_statistics': self.category_wise_statistics,
-                'backbone_storage_[MB]': estimated_total_size,
-                'backbone_mult_adds_[M]': number_of_mult_adds,
-                'feature_extraction_[ms]': pd_run_times['#1 feature extraction cpu'].mean() if self.measure_inference else 0.0,
-                'embedding_of_features_[ms]': pd_run_times['#3 embedding of features cpu'].mean() if self.measure_inference else 0.0,
-                'calc_distances_[ms]': pd_run_times['#5 score patches cpu'].mean() if self.measure_inference else 0.0,
-                'calc_scores_[ms]': pd_run_times['#7 img lvl score cpu'].mean() if self.measure_inference else 0.0,
-                'total_time_[ms]': pd_run_times['#11 whole process cpu'].mean() if self.measure_inference else 0.0,
-                'img_auc_[%]': img_auc
-                }
+            try:
+                opt_dict = {
+                    'backbone': self.backbone_id,
+                    'pooling_strategy': str(self.pooling_strategy),
+                    'layers_needed': self.layers_needed,
+                    'layer_cut': self.layer_cut,
+                    'exclude_relu': self.exclude_relu,
+                    'sigmoid_in_last_layer': self.sigmoid_in_last_layer,
+                    'prune_output_layer': f'{self.prune_output_layer[0]} #{len(self.prune_output_layer[1])}',
+                    'prune_structured_nni': f'{self.prune_structured_nni[0]} (Percentage: {self.sparsity}; Method: {self.prune_structured_nni[2]})',
+                    'prune_l1_unstructured': f'{self.prune_l1_unstructured[0]} (Percentage: {self.prune_l1_unstructured[1]})',
+                    'prune_pytorch_pruning': f'{self.prune_torch_pruning[0]} (Percentage: {self.prune_torch_pruning[1]})',
+                    'iterative_pruning': f'{self.iterative_pruning[0]} (Iterations: {self.iterative_pruning[1]})',
+                    'pretrain_for_channel_selection': self.pretrain_for_channel_selection, # TODO
+                    'adapted_score_calc': self.adapted_score_calc,
+                    'n_neighbors': self.n_neighbors,
+                    'n_next_patches': self.n_next_patches,
+                    'coreset_sampling_ratio': self.coreset_sampling_ratio,
+                    'reduce_via_std': self.reduce_via_std,
+                    'reduce_via_entropy': self.reduce_via_entropy,
+                    'quantize_model_with_nni': self.quantize_model_with_nni,
+                    'reduce_via_entropy_normed': self.reduce_via_entropy_normed,
+                    'reduce_factor': self.reduction_factor,
+                    'coreset_size': self.embedding_coreset.shape[0] if not self.multiple_coresets[0] else self.embedding_coreset.shape[1],
+                    'resulting_feature_length': self.embedding_coreset.shape[1] if not self.multiple_coresets[0] else self.embedding_coreset.shape[2],
+                    'resolution_of_patches': np.sqrt(self.output_shape[1]),
+                    'normalize_output': self.normalize,
+                    'faiss_standard': self.faiss_standard,
+                    'faiss_quantized': self.faiss_quantized,
+                    'own_knn': self.own_knn,
+                    'distance_metric': self.metrices[self.metric_id],
+                    'multiple_coresets': 1 if not self.multiple_coresets[0] else self.multiple_coresets[1],
+                    'feature_adaptor': self.adapt_feature,
+                    'own_qint8': self.quantize_qint8,
+                    'torchvision_qint8': self.quantize_qint8_torchvision,
+                    'pooling_strategy': str(self.pooling_strategy),
+                    'category_wise_statistics': self.category_wise_statistics,
+                    'backbone_storage_[MB]': estimated_total_size,
+                    'backbone_mult_adds_[M]': number_of_mult_adds,
+                    'feature_extraction_[ms]': pd_run_times['#1 feature extraction cpu'].mean() if self.measure_inference else 0.0,
+                    'embedding_of_features_[ms]': pd_run_times['#3 embedding of features cpu'].mean() if self.measure_inference else 0.0,
+                    'calc_distances_[ms]': pd_run_times['#5 score patches cpu'].mean() if self.measure_inference else 0.0,
+                    'calc_scores_[ms]': pd_run_times['#7 img lvl score cpu'].mean() if self.measure_inference else 0.0,
+                    'total_time_[ms]': pd_run_times['#11 whole process cpu'].mean() if self.measure_inference else 0.0,
+                    'img_auc_[%]': img_auc
+                    }
+            except:
+                print('Full opt_dict not available. Probably because only inference and therefore some parameters are not available.')
+                opt_dict = {
+                    'backbone': self.backbone_id,
+                    'layers_needed': self.layers_needed,
+                    'layer_cut': self.layer_cut,
+                    'adapted_score_calc': self.adapted_score_calc,
+                    'faiss_standard': self.faiss_standard,
+                    'faiss_quantized': self.faiss_quantized,
+                    'own_knn': self.own_knn,
+                    'feature_adaptor': self.adapt_feature,
+                    'own_qint8': self.quantize_qint8,
+                    'torchvision_qint8': self.quantize_qint8_torchvision,
+                    'feature_extraction_[ms]': pd_run_times['#1 feature extraction cpu'].mean() if self.measure_inference else 0.0,
+                    'embedding_of_features_[ms]': pd_run_times['#3 embedding of features cpu'].mean() if self.measure_inference else 0.0,
+                    'calc_distances_[ms]': pd_run_times['#5 score patches cpu'].mean() if self.measure_inference else 0.0,
+                    'calc_scores_[ms]': pd_run_times['#7 img lvl score cpu'].mean() if self.measure_inference else 0.0,
+                    'total_time_[ms]': pd_run_times['#11 whole process cpu'].mean() if self.measure_inference else 0.0,
+                    'img_auc_[%]': img_auc
+                    }
+                    
             file_path = os.path.join(self.log_path, f'summary_{self.group_id}.csv')
             
             if os.path.exists(file_path):
@@ -1424,15 +1452,16 @@ if __name__ == '__main__':
     model.n_next_patches = 16
     model.patchcore_scorer = True
     # devices
-    model.cuda_active = True
-    model.cuda_active_training = True
+    model.cuda_active = False
+    model.cuda_active_training = False
     # quantization
-    model.quantize_qint8 = False
+    model.quantize_qint8 = True
     model.calibration_dataset = 'random'
+    model.num_images_calib = 1000
     # subsampling
     model.coreset_sampling_method = 'patchcore_greedy_approx'#'k_center_greedy'#
     model.specific_number_of_examples = 1000
-    model.multiple_coresets = [True, 3]
+    model.multiple_coresets = [False, 3]
     # search
     model.own_knn = False
     model.faiss_standard = False
@@ -1442,10 +1471,11 @@ if __name__ == '__main__':
     
     # general settings
     model.category = 'toothbrush'
-    model.adapt_feature = True
+    model.adapt_feature = False
+    model.group_id = 'prep_for_pi_L2_3_q'
     # shrinking_factor=0.3, std_factor=0.01, batch_size=32, num_workers=12, lr=0.0005, epochs=12, 
-    model.feature_adaptor_dict = {'shrinking_factor': 0.3, 'std_factor': 0.01, 'batch_size': 32, 'num_workers': 12, 'lr': 0.0005, 'epochs': 6, 'use_cuda': True}#, 'weight_decay': 0.0001, 'momentum': 0.9, 'scheduler': 'step', 'step_size': 5, 'gamma': 0.1, 'milestones': [5, 10], 'warm_up_reps': 1, 'number_of_reps': 2, 'normalize': False, 'weight_by_entropy': True, 'reduce_via_entropy_normed': True, 'reduction_factor': 50, 'sigmoid_in_last_layer': False, 'need_for_own_last_layer': True, 'prune_output_layer': [True, None]}
-    # model.measure_inference = False
+    # model.feature_adaptor_dict = {'shrinking_factor': 0.3, 'std_factor': 0.01, 'batch_size': 32, 'num_workers': 12, 'lr': 0.0005, 'epochs': 6, 'use_cuda': True}#, 'weight_decay': 0.0001, 'momentum': 0.9, 'scheduler': 'step', 'step_size': 5, 'gamma': 0.1, 'milestones': [5, 10], 'warm_up_reps': 1, 'number_of_reps': 2, 'normalize': False, 'weight_by_entropy': True, 'reduce_via_entropy_normed': True, 'reduction_factor': 50, 'sigmoid_in_last_layer': False, 'need_for_own_last_layer': True, 'prune_output_layer': [True, None]}
+    model.measure_inference = True
     # model.warm_up_reps = 1
     # model.number_of_reps = 2
     # model.normalize = False
