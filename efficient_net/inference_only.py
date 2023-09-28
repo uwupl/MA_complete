@@ -72,23 +72,9 @@ else:
 def main():
     '''
     Performs inference on the test set of the specified dataset and subdataset.
-    Loads quantized (!) teacher, student and autoencoder models from the specified weights.
+    Loads quantized (!) teacher, student and autoencoder models from the specified weights. TODO not up to date
     '''
-    # raspberry_pi = True
-    # config = config_helper()
-    # if raspberry_pi:
-    #     config.output_dir = '/home/jo/MA/code/MA_complete/results/'
-    #     config.weights = '/home/jo/MA/code/MA_complete/efficient_net/models/teacher_small.pth'
-    #     config.mvtec_ad_path = '/home/jo/MA/MVTechAD'
-    #     config.model_base_dir = '/home/jo/MA/code/MA_complete/quantized_models'
-    #     config.backend = 'qnnpack'
-    # else:
-    #     config.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
-    #     config.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
-    #     config.mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
-    #     config.model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
-    #     config.backend = 'x86'
-    # config = config_helper()#dataset='mvtec_ad', subdataset='cable', output_dir=output_dir, model_size='small', weights=weights, mvtec_ad_path=mvtec_ad_path, model_base_dir=model_base_dir)
+
     from efficientad import config
     config.measure_inference_time = True
     
@@ -101,9 +87,11 @@ def main():
 
     # test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
     #                             config.dataset, config.subdataset, 'test')
-    
-    model_dir = os.path.join(config.model_base_dir, #config.output_dir, 'trainings', config.dataset,
-                                config.subdataset)
+    if raspberry_pi:
+        model_dir = os.path.join(config.model_base_dir, #config.output_dir, 'trainings', config.dataset,
+                                    config.subdataset)
+    else:
+        model_dir = config.model_base_dir
     # /mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad/trainings/mvtec_ad/screw
     test_set = ImageFolderWithPath(
         os.path.join(dataset_path, config.subdataset, 'test'))
@@ -124,7 +112,7 @@ def main():
     # teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=None)
     
     # load weights
-    phase = 'tmp' # or 'final'
+    phase = 'final_50000' # or 'final'
 
     teacher = torch.load(os.path.join(model_dir, f'teacher_{phase}.pth'), map_location=torch.device('cpu'))
     student = torch.load(os.path.join(model_dir, f'student_{phase}.pth'), map_location=torch.device('cpu'))
@@ -137,7 +125,7 @@ def main():
         os.path.join(dataset_path, config.subdataset, 'test'))
     # if config.dataset == 'mvtec_ad':
     # mvtec dataset paper recommend 10% validation set
-    train_size = int(0.98 * len(full_train_set)) # edited from 0.9 to 0.98
+    train_size = int(0.90 * len(full_train_set)) # edited from 0.9 to 0.98
     validation_size = len(full_train_set) - train_size
     rng = torch.Generator().manual_seed(seed) # random number generator
     _, validation_set = torch.utils.data.random_split(full_train_set,
@@ -155,8 +143,14 @@ def main():
     t_1 = perf_counter()
     print(f'Quantization took {t_1 - t_0} seconds')
 
+    # import json
+    if raspberry_pi:
+        
+        this_dir = model_dir
+    else:
+        this_dir = os.path.join(config.output_dir, config.run_id, 'model_statistics')
     import json
-    with open(os.path.join(model_dir, f'statistics_{phase}.json'), 'rb') as f: # _{phase}
+    with open(os.path.join(this_dir, f'statistics_{phase}.json'), 'rb') as f: # _{phase}
         statistics = json.load(f)#, allow_pickle=True)
    
     teacher_mean = torch.tensor(statistics['teacher_mean'])
@@ -216,7 +210,7 @@ def main():
     
     # save runtimes as json
     import json
-    with open(os.path.join(model_dir, f'runtime_{phase}.json'), 'w') as f:
+    with open(os.path.join(config.output_dir, f'runtime_{phase}.json'), 'w') as f:
         json.dump({'teacher_inference': teacher_inference*1e3,
                    'teacher_inference_q': teacher_inference_q*1e3,
                    'student_inference': student_inference*1e3,

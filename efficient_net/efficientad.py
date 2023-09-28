@@ -60,7 +60,7 @@ class config_helper():
     def __init__(self):
         self.run_id = 'not_specified'
         self.dataset = 'mvtec_ad'
-        self.subdataset = 'bottle'
+        self.subdataset = 'zipper'
         self.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
         self.model_size = 'small'
         self.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
@@ -104,11 +104,11 @@ class config_helper():
             self.model_base_dir = '/home/jo/MA/code/MA_complete/quantized_models'
             self.backend = 'qnnpack'
         else:
-            self.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
+            self.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad' # TODO add config.subdataset
             self.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
             self.mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
-            self.model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
-            self.backend = 'x86'
+            self.model_base_dir = f'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad/{self.run_id}/models' # TODO: add config.subdataset
+            self.backend = 'fbgemm'#x86'
         
     def save_as_json(self):
         file_name = f'config_{self.run_id}_{self.subdataset}.json'
@@ -150,7 +150,7 @@ config = config_helper()
 #     config.mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
 #     config.model_base_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/quantized_models'
 #     config.backend = 'x86'
-already_done = ['bottle','bottle', 'cable', 'capsule', 'carpet', 'grid', 'own', 'hazelnut']
+already_done = []
 # data loading
 default_transform = transforms.Compose([
     transforms.Resize((config.image_size, config.image_size)),
@@ -178,9 +178,9 @@ def main():
     else:
         raise Exception('Unknown config.dataset')
 
-    cats = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'own',
-            'hazelnut', 'leather', 'metal_nut', 'pill', 'screw',
-            'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+    cats = ['bottle', 'cable', 'capsule', 'carpet']#, 'grid', 'own',
+            # 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw',
+            # 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     additional_base_points = [0, 20, 100, 500, 1000, 2000, 3000, 4000, 7500]
     
     for k, cat in enumerate(cats):

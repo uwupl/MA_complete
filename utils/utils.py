@@ -257,6 +257,7 @@ def plot_results(labels, feature_extraction, embedding, search, calc_distances, 
     '''
     visualizes results in bar chart
     '''
+    font_scaler = 1.0
     
     if show_f_length:
         new_labels = []
