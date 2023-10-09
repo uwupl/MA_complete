@@ -16,7 +16,7 @@ import os
 import numpy as np
 import pandas as pd
 from PIL import Image
-import cv2
+# import cv2
 from sklearn.random_projection import SparseRandomProjection
 from sklearn.metrics import roc_auc_score
 import torch
@@ -28,11 +28,11 @@ import pickle
 from sklearn.neighbors import NearestNeighbors
 import time
 from time import perf_counter as record_cpu
-from anomalib.models.components.sampling import k_center_greedy
-from torchinfo import summary
+# from anomalib.models.components.sampling import k_center_greedy
+# from torchinfo import summary
 import copy
-
-
+import platform
+raspberry_pi = False if platform.machine().__contains__('x86') else True
 class PatchCore(pl.LightningModule):
     '''
     __init__:
@@ -185,7 +185,7 @@ class PatchCore(pl.LightningModule):
         self.init_results_list()
         # prepare transformations of data --> potential? TODO --> eher Nein
         self.data_transforms = transforms.Compose([
-                        transforms.Resize((self.load_size, self.load_size), Image.ANTIALIAS),
+                        transforms.Resize((self.load_size, self.load_size), Image.LANCZOS),
                         transforms.ToTensor(),
                         transforms.CenterCrop(self.input_size),
                         transforms.Normalize(mean=means,
@@ -303,8 +303,12 @@ class PatchCore(pl.LightningModule):
         else:
             self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, prune_output_layer=(False, []), prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, need_for_own_last_layer=self.need_for_own_last_layer, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).eval() # prune_l1_norm=self.prune_l1_unstructured,
             if self.quantize_qint8:
-                self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=self.calibration_dataset, category=self.category, cpu_arch=self.cpu_arch, num_images=self.num_images_calib, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
-            
+                self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=self.calibration_dataset if not raspberry_pi else None, category=self.category, cpu_arch=self.cpu_arch, num_images=self.num_images_calib, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
+                if raspberry_pi:
+                    # load pretrained, quantized and calibrated models; only RN18 and RN34 for now
+                    file_name = f'{self.backbone_id}_layers_{self.layers_needed}_qint8_qnnpack_calib_random.pth'
+                    path_to_model = os.path.join('/home/jo/MA/code/MA_complete/quantized_models', file_name)
+                    self.backbone.load_state_dict(torch.load(path_to_model, map_location=torch.device('cpu')))
             self.dummy_input = torch.randn(1, 3, self.input_size, self.input_size)
         # determine output shape of model
 
@@ -418,8 +422,13 @@ class PatchCore(pl.LightningModule):
                 self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, prune_output_layer=self.prune_output_layer, prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, need_for_own_last_layer=self.need_for_own_last_layer, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).eval() 
                 if self.quantize_qint8:
                     self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=None, category=self.category, cpu_arch=self.cpu_arch, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
-                    self.backbone.load_state_dict(torch.load(os.path.join(self.embedding_dir_path,'backbone.pth'), map_location=torch.device('cpu')))
-                                        
+                    if not raspberry_pi:
+                        self.backbone.load_state_dict(torch.load(os.path.join(self.embedding_dir_path,'backbone.pth'), map_location=torch.device('cpu')))
+                    else:
+                        # load pretrained, quantized and calibrated models; only RN18 and RN34 for now
+                        file_name = f'{self.backbone_id}_layers_{self.layers_needed}_qint8_qnnpack_calib_random.pth'
+                        path_to_model = os.path.join('/home/jo/MA/code/MA_complete/quantized_models', file_name)
+                        self.backbone.load_state_dict(torch.load(path_to_model, map_location=torch.device('cpu')))                
         self.backbone.eval()
         # print(self.backbone)
         if (not self.pooling_embedding) or self.patchcore_scorer:
@@ -675,7 +684,8 @@ class PatchCore(pl.LightningModule):
             total_embeddings = self.select_channels_core(total_embeddings) #TODO naming of variables
         return total_embeddings
     
-    def training_epoch_end(self, outputs):
+    # def training_epoch_end(self, outputs):
+    def on_train_epoch_end(self):#, outputs):
         if self.save_features: # just for debugging
             file_name_features = input('file name for features:\n')
             # feature_save = np.array([])
@@ -1295,7 +1305,9 @@ class PatchCore(pl.LightningModule):
             input_x = cv2.cvtColor(x.permute(0,2,3,1).cpu().numpy()[0]*255, cv2.COLOR_BGR2RGB) # further transformation
             self.save_anomaly_map(anomaly_map, input_x, gt_np*255, file_name[0], x_type[0]) # save of everything
         
-    def test_epoch_end(self, outputs):
+    # def test_epoch_end(self, outputs):
+    def on_test_epoch_end(self):
+        
         if not self.only_img_lvl:
             print("Total pixel-level auc-roc score :")
             # print(self.gt_list_px_lvl)
@@ -1444,7 +1456,7 @@ if __name__ == '__main__':
     model = PatchCore()#args=args)
     # model.test_dataloader()
     model.backbone_id = 'RN18'
-    model.layers_needed = [2,3]
+    model.layers_needed = [2]
     model.layer_cut = True
     # score calc
     model.adapted_score_calc = False
@@ -1455,7 +1467,7 @@ if __name__ == '__main__':
     model.cuda_active = False
     model.cuda_active_training = False
     # quantization
-    model.quantize_qint8 = True
+    model.quantize_qint8 = False
     model.calibration_dataset = 'random'
     model.num_images_calib = 1000
     # subsampling
@@ -1472,12 +1484,12 @@ if __name__ == '__main__':
     # general settings
     model.category = 'toothbrush'
     model.adapt_feature = False
-    model.group_id = 'prep_for_pi_L2_3_q'
+    model.group_id = 'RN18_L2_non_q'
     # shrinking_factor=0.3, std_factor=0.01, batch_size=32, num_workers=12, lr=0.0005, epochs=12, 
     # model.feature_adaptor_dict = {'shrinking_factor': 0.3, 'std_factor': 0.01, 'batch_size': 32, 'num_workers': 12, 'lr': 0.0005, 'epochs': 6, 'use_cuda': True}#, 'weight_decay': 0.0001, 'momentum': 0.9, 'scheduler': 'step', 'step_size': 5, 'gamma': 0.1, 'milestones': [5, 10], 'warm_up_reps': 1, 'number_of_reps': 2, 'normalize': False, 'weight_by_entropy': True, 'reduce_via_entropy_normed': True, 'reduction_factor': 50, 'sigmoid_in_last_layer': False, 'need_for_own_last_layer': True, 'prune_output_layer': [True, None]}
     model.measure_inference = True
-    # model.warm_up_reps = 1
-    # model.number_of_reps = 2
+    model.warm_up_reps = 0
+    model.number_of_reps = 2
     # model.normalize = False
     # model.weight_by_entropy = True
     

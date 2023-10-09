@@ -14,6 +14,13 @@ from PIL import Image
 import os
 import torchvision
 import glob
+import platform
+
+raspberry_pi = False if platform.machine().__contains__('x86') else True
+if raspberry_pi:
+    torch.backends.quantized.engine = 'qnnpack'
+else:
+    torch.backends.quantized.engine = 'fbgemm'
 
 
 class QuantizedModel(nn.Module):
@@ -126,7 +133,7 @@ def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, cat
     b = QuantizedModel(a, layers_needed=layers_needed, feature_dim = model.feature_dim)
     
     # set config for architecture
-    b.qconfig = torch.quantization.get_default_qconfig('fbgemm' if cpu_arch.__contains__('x86') else 'qnnpack')#cpu_arch) # 'qnnpack','x86'
+    b.qconfig = torch.quantization.get_default_qconfig('fbgemm' if not raspberry_pi else 'qnnpack')#cpu_arch) # 'qnnpack','x86'
     torch.quantization.prepare(b, inplace=True)
     
     # calibrate using training data
