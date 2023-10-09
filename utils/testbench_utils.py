@@ -160,8 +160,8 @@ def get_default_PatchCoreModel():
     model.n_next_patches = 16 # only for adapted_score_calc
     # nn search
     model.faiss_standard = False
-    model.own_knn = True
-    model.patchcore_score_patches = False
+    model.own_knn = False
+    model.patchcore_score_patches = True
     # channel reduction
     model.reduce_via_std = False
     model.reduce_via_entropy = False

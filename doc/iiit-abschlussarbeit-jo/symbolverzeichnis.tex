@@ -1,0 +1,109 @@
+﻿\newboolean{symbol_english}
+\setboolean{symbol_english}{false} % f�r englisches Symbolverzeichnis auf true setzen !
+
+\pagestyle{empty}
+
+\ifthenelse{\boolean{symbol_english}}
+	{%
+		\chapter*{Abbreviations and Symbols}\label{symbol}
+		\markboth{Abbreviations and Symbols}{Abbreviations and Symbols}
+		\addcontentsline{toc}{chapter}{Abbreviations and Symbols}
+	}
+	{%
+		\chapter*{Abk\"urzungen und Symbole}\label{symbol}
+		\markboth{Abk\"urzungen und Symbole}{Abk\"urzungen und Symbole}
+		\addcontentsline{toc}{chapter}{Abk\"urzungen und Symbole}
+	}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% symb.tex
+% --------
+%
+% Symbolverzeichnis (Abkürzungen, lateinische Buchstaben, griechische Buchstaben, kalligraphische und sonstige Symbole, Indizes und Exponenten)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\markboth{Symbolverzeichnis}{Symbolverzeichnis}
+\begin{supertabular*}{\textwidth}{ll}
+\multicolumn{2}{l}{\bfseries \Large \ifthenelse{\boolean{symbol_english}}{Abbreviations}{Verwendete Abk\"urzungen}} \\
+\\
+\hline 
+{\bfseries \ifthenelse{\boolean{symbol_english}}{Abbreviation}{Abk\"urzung}}				&		{\bfseries \ifthenelse{\boolean{symbol_english}}{Meaning}{Bedeutung}} \\
+\hline
+\\
+LTI				&	Linear zeitinvariant\\
+LPV				&	Linear parametervariant\\
+LTV				&	Linear zeitvariant\\
+DGL				&	Differentialgleichung\\
+\\
+\\
+\multicolumn{2}{l}{\bfseries \Large \ifthenelse{\boolean{symbol_english}}{Latin letters}{Lateinische Buchstaben}} \\
+\\
+\hline 
+{\bfseries Symbol}					&		{\bfseries \ifthenelse{\boolean{symbol_english}}{Meaning}{Bedeutung}} \\
+\hline
+\\
+t            				& 	Zeit \\
+$\vec x$	 			& 	Signalvektor \\
+$\vec z$				&	Transformierter Zustandsvektor\\
+$\vec e_x$				&	Beobachterfehler im x-Zustandsraum\\
+$\vec e_z$				&	Beobachterfehler im z-Zustandsraum\\
+$\hat{\vec A}$			&	Gesch\"atzte Systemmatrix\\
+$\vec f$				&	Nichtlineare Systemfunktion\\
+\\
+\\
+\multicolumn{2}{l}{\bfseries \Large \ifthenelse{\boolean{symbol_english}}{Greek letters}{Griechische Buchstaben}} \\
+\\
+\hline 
+{\bfseries Symbol}					&		{\bfseries \ifthenelse{\boolean{symbol_english}}{Meaning}{Bedeutung}} \\
+\hline
+\\
+$\lambda$               &		Eigenwert \\
+$\sigma$		&		Einheitssprung\\
+$\boldsymbol\gamma$	&		Diagonalmatrix\\
+$\mu$			&		Entwurfsparameter\\
+$\boldsymbol\theta$		&		Parametervektor\\
+\\
+\\
+\multicolumn{2}{l}{\bfseries \Large \ifthenelse{\boolean{symbol_english}}{Calligraphic and other symbols}{Kalligraphische und sonstige Symbole}} \\
+\\
+\hline 
+{\bfseries Symbol}					&		{\bfseries \ifthenelse{\boolean{symbol_english}}{Meaning}{Bedeutung}} \\
+\hline
+\\
+$\mathbb R$           		&	Menge der reellen Zahlen \\
+$\mathbb I$			&	Menge aller Intervalle\\
+$\mathbb X$			&	Zustandsmenge\\
+$\mathbb R^+_0$		&	Menge der positiven reellen Zahlen (inklusive Null) \\
+$\mathbb R^+$		&	Menge der positiven reellen Zahlen\\
+$|.|$				&	Elementeweise Betragsbildung\\
+$\norm{.}_2$		&	Euklidische Norm \\
+$\norm{.}$			&	Matrixnorm\\
+$\dot{(.)}$			&	Ableitung nach der Zeit\\
+$[.]$				&	Intervall einer Gr\"o\ss e\\
+$\leq$				&	Elementeweiser Vergleich\\
+$\prec 0$		 	&	Negativ definit\\
+$\succ 0$			&	Positiv definit\\
+$\max$			&	Maximum\\
+$\min$			&	Minimum\\
+$\inf$				&	Gr\"o\ss te untere Schranke (Infimum)\\
+$\sup$			&	Kleinste obere Schranke (Supremum)\\
+$\times$			&	Kartesisches Produkt\\
+$\infty$			&	Unendlich\\
+$\text{Im}\{\cdot\}$	&	Imagin\"arteil\\
+$\text{Re}\{\cdot\}$	&	Realteil\\
+\\
+\\
+\multicolumn{2}{l}{\bfseries \Large \ifthenelse{\boolean{symbol_english}}{Indices and exponents}{Indizes und Exponenten}} \\
+\\
+\hline 
+{\bfseries Symbol}					&		{\bfseries \ifthenelse{\boolean{symbol_english}}{Meaning}{Bedeutung}} \\
+\hline
+\\
+$(.)^+$			&	Positive Elemente\\
+$(.^\TT )$			&	Transposition\\
+$(.^{-1})$			&	Invertierung\\
+$(.)_0$			&	Anfangswert\\
+\end{supertabular*}
+
+\cleardoublepage %% Geaendert, Manuel Schwartz 2015.10.13, damit das erste Kapitel immer auf der rechten Seite anfaengt
+\pagestyle{scrheadings}

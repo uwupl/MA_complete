@@ -1,0 +1,17 @@
+\begin{thebibliography}{1}
+
+\bibitem{resnet}
+{\scshape He, Kaiming}, {\scshape Zhang, Xiangyu}, {\scshape Ren, Shaoqing}
+  \btxandlong{}\ {\scshape Sun, Jian}: {\em Deep Residual Learning for Image
+  Recognition}, 2015.
+
+\bibitem{biblatex}
+{\scshape Lehman, Philipp}, {\scshape Kime, Philip}, {\scshape Boruvka, Audrey}
+  \btxandlong{}\ {\scshape Wright, Joseph}: {\em The biblatex Package:
+  Programmable Bibliographies and Citations}, 2.7a, \btxmonjullong{} 2013.
+
+\bibitem{wideresnet}
+{\scshape Zagoruyko, Sergey} \btxandlong{}\ {\scshape Komodakis, Nikos}: {\em
+  Wide Residual Networks}, 2017.
+
+\end{thebibliography}
