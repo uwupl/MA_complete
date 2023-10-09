@@ -2,7 +2,7 @@ import numpy as np
 import os
 import time
 from path_definitions import RES_DIR
-from train_main_patchcore import PatchCore, one_run_of_model
+from train_main_patchcore_pi import PatchCore, one_run_of_model
 import traceback
 import torch
 import gc

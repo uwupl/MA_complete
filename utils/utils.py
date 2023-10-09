@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # from train_main import PatchCore
 # import pytorch_lightning as pl
 import torch
-import cv2
+# import cv2
 import os
 import warnings
 import time
