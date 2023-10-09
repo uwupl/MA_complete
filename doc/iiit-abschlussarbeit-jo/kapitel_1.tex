@@ -1,0 +1,118 @@
+% -*- TeX -*- -*- DE -*-
+
+\chapter{Einleitung}\label{ch:einleitung} Die Vorlage \lstinline!iiit-dipl.cls! ist die dritte Version der am IIIT fur
+Studien- und Diplomarbeiten verwendeten Vorlage. Die aktuellen Revision wurde um einige packages
+erweitert, die in den vielen Arbeiten in der einen oder anderen Form zu finden waren oder sich im
+taglichen Gebrauch als hilfreich erwiesen haben. Es sollen hier auch kleine Beispiele gegeben
+werden, um ein einheitliches Erscheinungsbild der am IIIT erstellten Arbeiten zu gewahrleisten.
+Dabei wird ein gewisses Grundwissen uber \LaTeX{} vorausgesetzt.
+
+In Kapitel \ref{ch:einleitung} werden die technischen Grundlagen wie die eingebundenen packages
+sowie die Dateistruktur dieser Beispielarbeit beleuchtet. Kapitel \ref{ch:modellierung} geht naher
+auf die von den packages sowie der Klasse zur Verfugung gestellten Umgebungen ein.
+
+\section{Dateistruktur}
+
+Das zentrale Dokument einer Studien-/ Diplomarbeit ist \lstinline!BA_MA_NameOfStudent.tex!. Am Anfang dieser
+Datei werden die grundlegenden Einstellungen an der Dokumentenklasse vorgenommen. Diese werden als
+Argumente in eckigen Klammern an die Klasse ubergeben.
+
+Die Optionen der Dokumentenklasse konnen beispielsweise folgendermasen eingestellt werden:
+\lstinputlisting[style=latex,firstline=2,lastline=31,firstnumber=2]{\jobname.tex} Damit wird die Klasse
+\lstinline!iiit-dipl! mit doppelseitigem Layout, alphanumerischem
+Literaturverzeichnis ausgewahlt.
+
+Einige der zur Verfugung stehenden switches sind in Tabelle \ref{tab:switches} aufgefuhrt und erlautert.
+Defaultwerte sind mit eckigen Klammern markiert.
+
+\newcolumntype{R}{>{\raggedleft\arraybackslash}X}
+\begin{table}[tb]
+    \centering
+    \caption{Zentrale switches\label{tab:switches}}
+    \begin{tabularx}{\textwidth}{>{\hsize=.6\hsize}R>{\hsize=1.4\hsize}X}
+        \toprule
+        switch          & Bedeutung\\
+        \midrule
+        \lstinline!latin1!, \lstinline!utf8!, \lstinline![ansinew]! & Zur direkten Eingabe von
+                          Sonderzeichen wie a, o, u und s muss dem Compiler die verwendete
+                          Kodierung mitgeteilt werden. \\
+        \lstinline![deutsch]!, \lstinline!english! & Sprache der automatisch gesetzten Begriffe \\
+        \lstinline!oneside!, \lstinline![twoside]! & Einstellung fur doppelseitigen Druck.
+                          Beeinflusst die Kopfzeile und Leerseiten vor neuen Kapiteln. \\
+        \lstinline!biblatex! & Verwendet \lstinline!biblatex! statt \lstinline!bibtex!.
+                          \lstinline!biblatex! hat den Vorteil, dass es die UTF8-Kodierung
+                          unterstutzt, die beispielsweise von JabRef verwendet wird. Damit konnen
+                          beispielsweise auch Referenzen von Autoren mit Umlauten im Namen korrekt
+                          sortiert werden. \lstinline!biblatex! erfordert, dass in der verwendeten
+                          Umgebung \lstinline!biber.exe! als Bibtex-Compiler eingestellt ist. Falls
+                          \lstinline!biber! nicht in der installierten \TeX-Distribution enthalten ist,
+                          kann es nachtraglich von
+                          \url{http://sourceforge.net/projects/biblatex-biber/files/biblatex-biber/}
+                          bezogen werden. Die Kompatibilitaten der verschiedenen \lstinline!biblatex!
+                          und \lstinline!biber! Versionen konnen der \lstinline!biblatex! Dokumentation
+                          \cite{biblatex} entnommen werden. \\
+        \lstinline!lst! & Sollte angegeben werden, wenn Quelltexte eingebunden werden. Mit dieser
+                          Option wird das Listings-Package geladen und es werden Styles mit
+                          Syntax-Highlighting fur verschiedene Programmiersprachen (\lstinline!C++!,
+                          \lstinline!matlab!, \lstinline!latex!, \lstinline!other!) vordefiniert. Wird
+                          das Listings-Package nicht benotigt, empfiehlt es sich, diese Option
+                          wegzulassen, um die Compiliergeschwindigkeit zu erhohen.\\
+        andere          & Andere Optionen werden von der \lstinline!scrbook!-Klasse behandelt.\\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+Um die Titelseite korrekt generieren zu konnen, mussen einige (selbsterklarende) Variablen gesetzt
+werden. Dabei ergeben die folgenden Einstellungen die Titelseite dieses Dokuments:
+\lstinputlisting[style=latex,firstline=35,lastline=41,firstnumber=35]{\jobname.tex}
+Danach kann mit dem eigentlichen Dokument begonnen werden. Zuerst wird die frontmatter, also das
+vorbereitende Material prasentiert. Hierzu gehoren die Titelseite mit Einverstandniserklarung
+(\lstinline!\maketitle!) und das Inhaltsverzeichnis (\lstinline!\tableofcontents!), die automatisch
+generiert werden, sowie der Abstract, eine ca. 100-200 Wort lange Zusammenfassung der Arbeit
+inklusive der erzielten Ergebnisse auf Englisch.
+
+Im Hauptteil (\lstinline!\mainmatter!) wird die eigentliche Arbeit prasentiert. Der Hauptteil
+sollte die folgenden Teile beinhalten:
+\begin{itemize}
+      \item
+            Einleitung
+      \item
+            Zusammenfassung und Ausblick
+\end{itemize}
+Es ist sinnvoll, den Hauptteil in mehrere Dateien aufzuteilen. Zusatzliche Dateien konnen mit Hilfe des
+\lstinline!\include!-Befehls eingebunden werden. Dabei wird der Inhalt der Datei so interpretiert, als
+stunde er direkt in der Hauptdatei.
+
+Der letzte Teil des Hauptteils sind die Anhange. In ihnen werden z.B. Variablen, wichtige Teile des
+Quellcodes oder langere Herleitungen beschrieben. Nach dem \lstinline!\appendix!-Befehl werden die
+Anhange automatisch alphabetisch nummeriert.
+
+Am Abschluss des Dokuments steht das wichtige Literaturverzeichnis sowie ggf. das Bilder- und
+Tabellenverzeichnis.
+
+\lstinputlisting[style=latex,firstline=55,lastline=56,,firstnumber=55]{\jobname.tex}
+
+Da die Vorlage, also \lstinline!iiit-dipl.cls! \textit{nicht} verandert werden soll, steht fur
+eigene Erweiterungen wie zum Beispiel neue nutzliche packages die Datei
+\lstinline!erweiterungen.tex! zur Verfugung, die in die Hauptdatei eingebunden wird.
+\lstinputlisting[style=latex,firstline=32,lastline=32,,firstnumber=32]{\jobname.tex}
+In ihr wird standardmasig das Verzeichnis fur die Bilder gesetzt sowie ein Beispiel fur eine
+erweiterte Trennregel gegeben. Zweck dieser Datei ist es, alle Anpassungen, die die aktuelle Arbeit
+benotigt, zentral zu speichern und damit unabhanig von der eigentlichen Diplomklasse zu machen.
+
+\lstinputlisting[style=latex]{erweiterungen.tex}
+
+\section{Allgemeine Hinweise}
+
+Im Laufe der Zeit haben sich verschiedene Vorgehensweisen bei der Erstellung einer Diplom- bzw.
+Studienarbeit als nutzlich erwiesen. Einige von ihnen sollen hier ohne Anspruch auf Vollstandigkeit
+aufgefuhrt werden.
+
+\begin{description}
+      \item[Fruh dokumentieren]
+            Es macht Sinn, auch Zwischenergebnisse ggf. auch in \LaTeX{} zu dokumentieren.
+
+      \item[Sinnvolle Dateigrosen]
+            \LaTeX{} bietet die Moglichkeit, die Arbeit auf mehrere Dateien aufzuteilen und diese in die
+            Hauptdatei einzufugen.
+\end{description}

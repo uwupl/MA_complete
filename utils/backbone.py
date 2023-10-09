@@ -58,7 +58,7 @@ class Backbone(nn.Module):
         
         if self.quantize_qint8_prepared:
             if self.model_id.__contains__('WRN50'):
-                weights = Wide_ResNet50_2_Weights.DEFAULT
+                weights = Wide_ResNet50_2_Weights.IMAGENET1K_V1#Wide_ResNet50_2_Weights.DEFAULT
                 self.model =  wide_resnet50_2(weights=weights)
                 self.procedure_resnet()    
             elif self.model_id.__contains__('WRN101'):

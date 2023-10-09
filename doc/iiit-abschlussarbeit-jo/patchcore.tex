@@ -1,0 +1,53 @@
+% -*- TeX -*- -*- DE -*-
+
+\chapter{PatchCore}
+Die Methode \textbf{PatchCore} wurde erstmals am 15. Juni 2021 in Zusammenarbeit der Universität Tübingen und Amazon AWS im Paper \glqq Towards Total Recall in Industrial Anomaly Detection\grqq{} veröffentlicht. \ 
+In seiner zweiten Fassung vom 5. Mai 2022 wurde das Paper bei der CVPR 2022 (Computer Vision and Pattern Recognition) akzeptiert und mit über 260 Zitierungen eines der populärsten Paper im Bereich der Unüberwachten Anomaliedetektion.\
+Die Grundlage dieses Ansatzes sind \glqq Einbettungen\grqq{} (Im Folgenden: \textbf{Embeddings}) von Merkmalen (Im Folgenden: \textbf{Features}), die aus den Eingabebildern mithilfe eines auf \glqq ImageNet\grqq{} vortrainiertem \glqq Convolutional Neural Network (CNN)\grqq{} erzeugt werden.\
+Wie in einigen vorangegangenen Veröffentlichungen im Bereich der Unüberwachten Anomaliedetektion, werden auch hier die Features in \glqq Patches\grqq{} unterteilt, um die Lokalität der Anomalien zu erhalten. Diese werden folgend als \textbf{\glqq Patch Features\grqq{}} bezeichnet.\
+Weiter wird die eigentliche Anomaliedetektion, wie bereits bei der Methode \glqq SPADE\grqq{} (TODO --> Ref) mithilfe einer \glqq Nächsten Nachbar Suche (Nearest Neighbor Search; NN)\grqq{} in einer \glqq Memory-Bank \grqq{} durchgeführt.\
+Die wesentliche Weitereentwicklung liegt vor allem in der Methode, wie die \glqq Memory-Bank\grqq{} aufgebaut wird, die mit wenigen Beispielen nominaler \glqq Patch Features\grqq{} eine möglichst hohe Representativität bietet.\
+So wird die Laufzeit der NN-Suche deutlich reduziert, ohne dabei die Performanz zu beeinträchtigen.\
+Auch gut 2 Jahre nach Veröffentlichung ist die PatchCore Methode insbesondere auf dem MVTecAD-Datensatz (TODO --> link) mit einer Genauigkeit (Auccuracy) von maximal 99,6\% (\glqq PatchCore Ensemble\grqq{}) absolut konkurrenzfähig und wird in vielen Veröffentlichungen als \glqq State-of-the-Art\grqq{} Methode verwendet.\
+Im Folgenden wird die Methode PatchCore genauer erläutert und die Implementierung in PyTorch beschrieben.\
+Anschließend werden zahlreiche Adaptionen der Methode vorgestellt, die im Sinne des Ziels dieser Arbeit die Laufzeit der Methode reduzieren und dabei die Genauigkeit möglichst wenig beeinträchtigen sollen.\
+\section{Funktionsweise}
+\label{sec:Funktionsweise}Zunächst kann zwischen zwei Phasen unterschieden werden: Der Trainingsphase und der Testphase.\
+\subsection{Wesentliche Bestandteile}\label{subsec:WesentlicheBestandteile}
+Zunächst werden nachfolgend die wesentlichen Bestandteile der Methode PatchCore erläutert.\
+\subsubsection{Feature-Extraktion}\label{subsubsec:FeatureExtraction}
+Wie bereits kurz angerissen, geschieht die Feature Extraktion mithilfe eines vortrainiertem CNNs. 
+Konkret werden die Netzwerke, die im Folgenden als \textbf{Backbone} bezeichnet werden, mit dem Datensatz \glqq ImageNet\grqq{} \
+trainiert, um Bilder einer von 1000 Klassen zuzuordnen. Obwohl diese Bildklassifikationsaufgabe zunächst nur wenig mit der hier vorliegenden \
+binären Anomaliedetektion zu tun hat, haben sich diese Netzwerke als sehr gut geeignet erwiesen, um Merkmale (Feature) zu extrahieren, die auch für \
+die Anomaliedetektion verwendet werden können.\
+Dafür wird nicht etwa die Klassifikation, also das Ergebnis des Netzwerks nach durchlaufen des vollständigen Netzwer, verwendet, sondern die Ausgabe bestimmter  
+Dabei interessiert nicht das Klassifikationsergebnis an sich, sondern viel mehr die sogenannten \glqq Feature Maps\grqq{} von Zwischenschichten (Indermediate Layers) des Netzwerks.\
+Eine Feature Map ist hier die Ausgabe einer bestimmten Schicht des Netzwerks, die sich zunächst an jeder Stelle im Netzwerk befinden kann. \
+Betrachten wir als CNN ein Residual Network (ResNet; TODO --> Ref)
+
+
+
+
+\label{ch:PatchCore} Hier wird kurz angerissen, was es mit PatchCore auf sich hat. 
+\begin{itemize}
+    \item Popularität, Erscheinungsdatum, Performance, Ersteller, Zitierungen
+    \item Wie funktioniert PatchCore
+    \begin{itemize}
+        \item Training
+        \item Inferenz/Test
+    \end{itemize}
+    \item Implementierung
+    \item Baseline
+    \item Anpassungen
+    \item Fazit
+\end{itemize}
+NUR DER FCK!
+
+\section{Baseline}
+\label{sec:Baseline}
+Hallo
+
+\section{Adaptionen}
+\label{sec:Adaptionen}
+Hallo2

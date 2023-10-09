@@ -106,17 +106,17 @@ class SimpleNet(torch.nn.Module):
             self.number_of_reps = 5 # number of reps during measurement. Beacause we can assume a consistent estimator, results get more accurate with more reps
             self.warm_up_reps = 1 # before the actual measurement is done, we execute the process a couple of times without measurement to ensure that there is no influence of initialization and that the circumstances (e.g. thermal state of hardware) are representive.
         # Backbone
-        self.backbone_id = 'RN18' # analogous to model_id
+        self.backbone_id = 'WRN50' # analogous to model_id
         self.layers_to_extract_from = [2,3] # analogous to layers_needed
         self.quantize_qint8 = False
         # if self.quantize_qint8: because argumens have to be initialized before they can be tweaked from the outside
-        self.device = 'cpu'
+        # self.device = 'cpu'
         self.calibration_dataset = 'random'
         self.cpu_arch = 'x86'
         self.num_images_calib = 100
         # Embedding
-        self.pretrain_embed_dimensions = 256 + 128 # for RN18
-        self.target_embed_dimensions = 128 + 256 # for RN18
+        self.pretrain_embed_dimensions = 1536#256 + 128 # for RN18
+        self.target_embed_dimensions = 1536#128 + 256 # for RN18
         self.patch_size = 3
         self.patch_stride = 1
         self.embedding_size = None # TODO --> What does that do?
@@ -126,19 +126,19 @@ class SimpleNet(torch.nn.Module):
         # Discriminator
         self.dsc_layers = 2
         self.dsc_hidden = int(self.target_embed_dimensions*0.75)#1024
-        self.dsc_margin = 0.5 # TODO
+        self.dsc_margin = 0.0 # TODO
         # Noise
         self.noise_std = 0.015
         self.auto_noise = [0, None] # TODO
         self.noise_type = 'GAU'
         self.mix_noise = 1 # TODO --> probably just the number of classes of noise. Usually one
         # Training
-        self.meta_epochs = 40
+        self.meta_epochs = 10
         self.aed_meta_epochs = 0 # TODO
         self.gan_epochs = 4 # TODO
         self.batch_size = 8
-        self.dsc_lr = 1e-5
-        self.proj_lr = 1e-3
+        self.dsc_lr = 1e-4
+        self.proj_lr = 1e-4
         self.lr_scheduler = True
         self.num_workers = 12
         # Scoring 
@@ -359,6 +359,8 @@ class SimpleNet(torch.nn.Module):
         
         self.y_auc = []
         self.x_auc = []
+        self.y_pseudo_auc = []
+        self.x_pseudo_auc = []
         
         # reset iteration counter
         self.i_iter = 0
@@ -454,7 +456,9 @@ class SimpleNet(torch.nn.Module):
             'y_loss_total': self.y_loss_total,
             'x_loss_total': self.x_loss_total,
             'y_auc': self.y_auc,
-            'x_auc': self.x_auc
+            'x_auc': self.x_auc,
+            'y_pseudo_auc': self.y_pseudo_auc,
+            'x_pseudo_auc': self.x_pseudo_auc
             }
         
         with open(os.path.join(self.train_progress_dir, f'train_progress_{self.category}.json'), 'w') as fp:
@@ -506,13 +510,10 @@ class SimpleNet(torch.nn.Module):
                     self.i_iter += 1
                     img, _, _, _, _ = data_item#["image"]
                     img = img.to(torch.float).to(self.device)
-                    # features = 
+ 
                     true_feats = _embed(_feature_extraction(img, self.forward_modules), self.forward_modules, self.patch_maker)
                     if self.pre_proj > 0:
                         true_feats = self.pre_projection(true_feats)
-                    # else:
-                        # true_feats = _embed(img, self.forward_modules, self.patch_maker)
-                    # print('feat', true_feats.shape)
                     noise_idxs = torch.randint(0, self.mix_noise, torch.Size([true_feats.shape[0]]))
                     # print('noise_idxs', noise_idxs.shape)
                     noise_one_hot = torch.nn.functional.one_hot(noise_idxs, num_classes=self.mix_noise).to(self.device) # (N, K)
@@ -528,19 +529,24 @@ class SimpleNet(torch.nn.Module):
                     scores = self.discriminator(combined_features)
                     true_scores = scores[:len(true_feats)]
                     fake_scores = scores[len(fake_feats):]
-                    
                     th = self.dsc_margin
+                    # print(th)
                     p_true = (true_scores.detach() >= th).sum() / len(true_scores)
                     p_fake = (fake_scores.detach() < -th).sum() / len(fake_scores)
                     true_loss = torch.clip(-true_scores + th, min=0)
                     fake_loss = torch.clip(fake_scores + th, min=0)
-
-                    # self.logger.logger.add_scalar(f"p_true", p_true, self.logger.g_iter)
-                    # self.logger.logger.add_scalar(f"p_fake", p_fake, self.logger.g_iter)
-
                     loss = true_loss.mean() + fake_loss.mean()
-                    # self.logger.logger.add_scalar("loss", loss, self.logger.g_iter)
-                    # self.logger.step()
+
+                    loss.backward()
+                    if self.pre_proj > 0:
+                        self.proj_opt.step()
+
+                    self.dsc_opt.step()
+
+                    loss = loss.detach().cpu() 
+                    all_loss.append(loss.item())
+                    all_p_true.append(p_true.cpu().item())
+                    all_p_fake.append(p_fake.cpu().item())
                     
                     self.y_loss_fake.append(fake_loss.mean().detach().cpu().item())
                     self.x_loss_fake.append(self.i_iter)
@@ -548,18 +554,6 @@ class SimpleNet(torch.nn.Module):
                     self.x_loss_true.append(self.i_iter)
                     self.y_loss_total.append(loss.detach().cpu().item())
                     self.x_loss_total.append(self.i_iter)
-
-                    loss.backward()
-                    if self.pre_proj > 0:
-                        self.proj_opt.step()
-                    # if self.train_backbone:
-                    #     self.backbone_opt.step()
-                    self.dsc_opt.step()
-
-                    loss = loss.detach().cpu() 
-                    all_loss.append(loss.item())
-                    all_p_true.append(p_true.cpu().item())
-                    all_p_fake.append(p_fake.cpu().item())
                 
                 if len(embeddings_list) > 0:
                     self.auto_noise[1] = torch.cat(embeddings_list).std(0).mean(-1)
@@ -570,6 +564,9 @@ class SimpleNet(torch.nn.Module):
                 all_loss = sum(all_loss) / len(input_data)
                 all_p_true = sum(all_p_true) / len(input_data)
                 all_p_fake = sum(all_p_fake) / len(input_data)
+                pseudo_auc = (all_p_true + all_p_fake) / 2
+                self.y_pseudo_auc.append(pseudo_auc)
+                self.x_pseudo_auc.append(self.i_iter)
                 cur_lr = self.dsc_opt.state_dict()['param_groups'][0]['lr']
                 pbar_str = f"epoch:{i_epoch} loss:{round(all_loss, 5)} "
                 pbar_str += f"lr:{round(cur_lr, 6)}"
@@ -823,12 +820,17 @@ class SimpleNet(torch.nn.Module):
     
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(device)
     model = SimpleNet(device)
     
     cats = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 
             'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'own', 'zipper']
-    model.meta_epochs = 40
-    model.group_id = '1909_trial'
+    # cats = ['pill']
+    model.backbone_id = 'WRN50'
+    model.dsc_margin = 0.5
+    model.meta_epochs = 10
+    model.pre_proj = 1
+    model.group_id = '0508_trial_2_WRN50_'
     for cat in cats:
         model.category = cat
         model.measure_inference = False
@@ -837,7 +839,25 @@ if __name__ == "__main__":
         print(f'\nTesting...{cat}\n')
         model.measure_inference = True
         model.test()
-    
+    del model
+    model = SimpleNet(device)
+    model.backbone_id = 'RN18'
+    model.meta_epochs = 10
+    model.pre_proj = 1
+    model.pretrain_embed_dimensions = 384
+    model.target_embed_dimensions = 384
+    model.quantize_qint8 = True
+    model.calibration_dataset = 'random'
+    model.num_images_calib = 100
+    model.group_id = '0508_RN18_q_'
+    for cat in cats:
+        model.category = cat
+        model.measure_inference = False
+        print(f'\nTraining...{cat}\n')
+        model.train()
+        print(f'\nTesting...{cat}\n')
+        model.measure_inference = True
+        model.test()
     # number_of_samples = [1]#, 10, 100, 1000, 10000]
     # dataset_type = ['random']#, 'imagenet']
     # model.category = 'cable'

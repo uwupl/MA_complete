@@ -1,0 +1,88 @@
+% -*- TeX -*- -*- DE/EN -*-
+\documentclass[
+%%%% --- Kodierung ---
+    %,latin1                 % latin1 Kodierung
+    ,utf8                   % UTF-8 Kodierung
+    %,ansinew                % ansinew Kodierung
+%%%% --- Sprache ---
+    ,deutsch                % Deutsch
+    %,english                % Englisch
+%%%% --- Druck ---
+    ,twoside                % beidseitiger Ausdruck
+    %,oneside                % einseitiger Ausdruck
+%%%% --- Mathe ---
+    %,eqncentered                 % Gleichungen zentrieren (optional)
+%%%% --- Bibliographie ---
+%    ,biblatex               % BibLaTeX anstatt BibTeX verwenden
+%%%% --- Quellcode ---
+    ,lst                    % Listings-Paket laden
+%%%% --- Lesezeichen ---
+    %,nohyper                % keine hyperrefs verwenden
+    %,nobookmarks            % Bookmarks im PDF beim "Offnen ausblenden
+%%%% --- auto-pst-pdf ---
+    ,off                    % auto-pst-pdf ausschalten
+%%%% --- subfigures ---
+    %,subfigure              % subfigure- anstatt subcaption-Paket verwenden
+                            % subfigure-Paket nicht mehr verwenden, wenn mit neuer Arbeit begonnen wird (Paket ist veraltet)
+%%%% KOMA-Script Optionen ---
+    %,parskip=half           % fuer Absatzabstand statt -einzug
+							% parskip bei Option deutsch automatisch eingestellt
+]{iiit-dipl}
+
+\input{erweiterungen.tex}
+
+\title{Example title}
+\arbeittyp{master}  % master, diplom, bachelor, student, praktikant
+\author{Johannes Baßler}
+\akadgrad{B.Sc.} %akademischer Grad B.Sc., M.Sc., B.Eng., Dipl.-Ing., ...
+\datevon{01.01.2010}
+\datebis{30.06.2010}
+\referent{Prof.~Dr.-Ing.~Michael~Heizmann} % optional bei arbeittyp "praktikant"
+\betreuer{M.Sc.~Max~Mustermann \and Dr.-Ing.~Hans~Maier\thanks{XYZ AG - Karlsruhe} \and Dipl.-Ing.~John~Doe\samethanks}
+
+%%>> nur wenn option:biblatex gesetzt
+%\addbibresource{referenzen.bib}
+%\AtEveryBibitem{
+%    \clearlist{language}
+%}
+%%<< nur wenn option:biblatex gesetzt
+\usepackage{tablefootnote}
+\usepackage{siunitx} 
+\usepackage{makecell}
+\begin{document}
+\frontmatter
+      \maketitle
+      \include{abstract}
+      \tableofcontents
+      \listoffigures
+      \listoftables
+      %% optional mit Symbolverzeichnis
+      %\include{symbolverzeichnis}
+
+\mainmatter
+      \include{kapitel_1}
+      %\include{kapitel_2}
+      %\include{kapitel_3}
+      \include{motivation}
+      \include{grundlagen}
+      \include{patchcore}
+      \include{efficientad}
+      \include{simplenet}
+      \appendix
+      \input{anhang}
+
+
+\backmatter
+
+%%>> nur wenn option:biblatex NICHT gesetzt
+			\bibliography{referenzen}
+%%<< nur wenn option:biblatex NICHT gesetzt
+
+%%%>> nur wenn option:biblatex gesetzt
+%% Achtung: BibTeX command has to be 
+%%		biber.exe "%bm" -q
+%% now, where %bm is the full path of main file name without extension
+%\selectlanguage{ngerman}
+%\printbibliography[heading=bibintoc]
+%%<< nur wenn option:biblatex gesetzt
+\end{document}

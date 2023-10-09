@@ -170,6 +170,7 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
     total_time_total = np.array([])
     coreset_size = np.array([])
     for k, run_dir in enumerate(this_run_dirs):
+        print(k)
         file_name = 'summary_' + run_dir + '.csv'
         file_path = os.path.join(res_path, run_dir,'csv',file_name)
         try:

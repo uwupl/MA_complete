@@ -85,6 +85,8 @@ def _feature_extraction(images, forward_modules):
         features = forward_modules["backbone"](images) # type dict
         # print("features intern 1: ", features[0].shape)
     # features = [features[layer] for layer in self.layers_to_extract_from] # list of tensors like usual: WRN50 L2: (1, 512, 28, 28), L3: (1, 1024, 14, 14), L4: (1, 2048, 7, 7)
+    features[0] = features[0] / 10
+    features[1] = features[1] / 10
     return features
 
 def _embed(features, forward_modules, patch_maker, provide_patch_shapes=False):#, evaluation=False):
@@ -93,11 +95,19 @@ def _embed(features, forward_modules, patch_maker, provide_patch_shapes=False):#
     # apply patchify
     # t_1 = time.perf_counter()
     # print('_embed')
+    # print("features intern 1: mean ", features[0].mean())
+    # print("features intern 1: std ", features[0].std())  
+    # print("features intern 1: min ", features[0].min())
+    # print("features intern 1: max ", features[0].max()) 
+    
+    # print("features intern 2: mean ", features[1].mean())
+    # print("features intern 2: std ", features[1].std())  
+    # print("features intern 2: min ", features[1].min())
+    # print("features intern 2: max ", features[1].max())
     features = [
         patch_maker.patchify(x, return_spatial_info=True) for x in features
-    ] 
-    # print("features intern 2: ", features[0][0].shape)
-    # interpolate
+    ]
+
     features, patch_shapes = interpolate_bilinear_after_patchify(features=features)
     # print("features intern 3: ", features[0].shape)
     # As different feature backbones & patching provide differently
