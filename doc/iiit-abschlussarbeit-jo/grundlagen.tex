@@ -119,60 +119,35 @@ Analog zu SPADE soll eine klare Linie hinzu PatchCore gezogen werden können.\
 
 
 \section{Raspberry Pi 4B}\label{sec:RaspberryPi4B}
-%Hier wird der Raspberry Pi 4B vorgestellt.\
-%Preis, Leistung, Pozessorarchitektur, verwendetes OS etc.\
-Der Raspberry Pi 4 ist ein äußerst vielseitiger und erschwinglicher Einplatinencomputer, der seit \
-seinem Erscheinen immense Popularität erlangt hat. Mit seiner kompakten Größe und seinen beeindruckenden Fähigkeiten ist \ 
-der Raspberry Pi 4 ein Favorit unter Bastlern, Pädagogen und Fachleuten gleichermaßen geworden.
+\subsection{Allgemeines}\label{subsec:RaspberryPi4BAllgemeines}
+Der Raspberry Pi 4, der im Juni 2019 von der Raspberry Pi Foundation veröffentlicht wurde, ist ein kleiner, erschwinglicher und vielseitiger Einplatinencomputer. \
 
-Der Raspberry Pi 4, oft auch einfach als Pi 4 bezeichnet, ist die vierte Generation der Raspberry Pi-Serie. Er wurde im Juni 2019 \ 
-von der Raspberry Pi Foundation vorgestellt und hat seitdem die Welt der Computerwelt verändert. \ 
-Dieser scheckkartengroße Computer bietet eine bemerkenswerte Leistung in seinem kleinen Formfaktor, wodurch er für eine Vielzahl \ 
-von Aufgaben geeignet ist.
+Die zentrale Recheneinheit (CPU) des Raspberry Pi 4 ist eine 64-bit Quad-Core-ARM-Cortex-A72-CPU, die mit 1,8 GHz (ältere Versionen mit 1,5 GHz) taktet. \  
+Er ist in drei Speicherkonfigurationen erhältlich: 1 GB, 2 GB, 4 GB und 8 GB LPDDR4 RAM mit 3200 MHz. Die Integration eines Broadcom VideoCore VI-Grafikprozessors \
+verbessert die Multimedia-Fähigkeiten und ermöglicht eine flüssige Videowiedergabe und 3D-Grafik-Rendering.
 
-Eines der herausragenden Merkmale des Raspberry Pi 4 ist seine verbesserte Hardwareausstattung im Vergleich zu seinen Vorgängern. \ 
-Er wird von einer Quad-Core-ARM-Cortex-A72-CPU angetrieben, was eine deutliche Verbesserung gegenüber den \ 
-Vorgängermodellen darstellt. Diese CPU in Kombination mit wahlweise 2 GB, 4 GB oder 8 GB Arbeitsspeicher ermöglicht es dem Pi 4, \ 
-auch anspruchsvollere Aufgaben mit Leichtigkeit zu bewältigen. Außerdem ist er mit einem VideoCore VI-Grafikprozessor \ 
-ausgestattet, der eine flüssige Videowiedergabe und 3D-Grafikrendering ermöglicht.
+Ein bemerkenswertes Merkmal des Raspberry Pi 4 sind die Anschlussmöglichkeiten. Er verfügt über zwei USB 3.0-Ports und zwei USB 2.0-Ports, \ 
+die den Anschluss verschiedener Peripheriegeräte ermöglichen. Dualband-Wi-Fi (2,4GHz und 5GHz) und Gigabit-Ethernet sorgen für eine zuverlässige \ 
+Netzwerkverbindung. HDMI- und Audioausgänge unterstützen hochauflösende Bildschirme und Audiogeräte. So können beispielsweise zwei 4K-Displays angeschlossen werden. \
 
-Die Anschlussmöglichkeiten sind eine weitere Stärke des Raspberry Pi 4. Er ist mit zwei USB 3.0-Anschlüssen und zwei USB 2.0-Anschlüssen ausgestattet \
-und ermöglicht so den Anschluss einer Vielzahl von Peripheriegeräten wie Tastaturen, Mäusen, Speichergeräten und Kameras. Darüber hinaus verfügt der Pi 4 \ 
-über Dualband-Wi-Fi (2,4GHz und 5GHz) und Gigabit-Ethernet für schnelle und zuverlässige Netzwerkverbindungen. HDMI- und Audioausgänge bieten Unterstützung für \ 
-hochauflösende Bildschirme und Audiogeräte.
+Das Gerät ist mit mehreren Betriebssystemen kompatibel, darunter Raspberry Pi OS (früher Raspbian), Linux-Distributionen und sogar Windows 10, \ 
+je nach Vorlieben und Anforderungen des Benutzers. In dieser Arbeit wurde Raspberry Pi OS in der 64-bit Version verwendet. Das auf Debian basierende Betriebssystem ist \
+für die Hardware des Raspberry Pi optimiert und ist kompatibel mit allen notwendigen Softwarepaketen. \
 
-Eine der wichtigsten Verbesserungen des Raspberry Pi 4 ist die Unterstützung für zwei 4K-Displays. Das bedeutet, dass Sie ihn für Aufgaben wie Digital Signage, Media Center \ 
-und sogar als Desktop-Ersatz verwenden können. Die Unterstützung für zwei Monitore eröffnet neue Möglichkeiten für Multitasking und Produktivität.
+Die 40 GPIO-Pins des Raspberry Pi 4 sind eine vielseitige Hardwareschnittstelle, die zahlreiche Anwendungen in verschiedenen Bereichen ermöglicht. \
+Die Anwendungen des Raspberry Pi 4 reichen von Bildungs- und Hobbyprojekten bis hin zu professionellen Unternehmungen. Er kann für Aufgaben wie \ 
+Heimautomatisierung, Robotik, Webserver und Softwareentwicklung verwendet werden. 
+Dank seines geringen Stromverbrauchs von etwa \num{2,7} W (Idle) bis maximal \num{6,4} W (Volllast, keine Peripherie)\cite{powerconsumptionpi} eignet er sich \ 
+für eingebettete Systeme und Internet-of-Things-Anwendungen (IoT).\cite{specspi}\cite{wikipi}
+\subsection{Ressourcenbeschränktheit}\label{subsec:RaspberryPi4BRessourcenbeschraenktheit}
+Die Rechenkapazität des Raspberry Pi 4 ist für viele Anwendungen ausreichend. Dennoch muss die Leistungsfähigkeit realisitsch eingeordnet werden: \
+Während der Paspberry Pi 4 eine Rechenleistung von \num{13,5} GLFOPS (Gleitkommaoperationen pro Sekunde) erreicht, ist ein auf der gleichen Architektur (ARM) beruhender \
+Apple M1 Prozessor aus dem Jahr 2020, der für einfache Consumer Tätigkeiten konzipiert ist, mit \num{154} GFLOPS mehr als 11 mal so schnell. \cite{flopscpu}
+Auch muss erwähnt werden, dass auf die Verwendung von modernen GPUs für die Inferenz in dieser Arbeit verzichtet wird, wie in Kapitel \ref{sec:Laufzeitoptimierung} bereits beschrieben. \
+Setzt man die Leistung des Raspberry Pi 4 in Relation zu modernen GPUs, die viele Entwicklungen im Bereich \textit{Depp Learning} überhaupt erst ermöglichten, \
+so wird schnell klar, warum bei der Verwendung eines Raspberry Pi 4 von \glqq Ressourcenbeschränktheit\grqq{} gesprochen werden kann. \
+Auch wenn Rechenkapazität in FLOPS gemessen keine eindeutigen Schlüsse auf die Laufzeit eines konkreten Algorithmus zulässt, so kann trotzdem festgehalten werden, \
+dass eine moderne GPU eine enorm höhere Rechenleistung besitzt. So erreichen moderne GPUs, wie Nvidia's Geforce RTX4090 Ti \num{82600} GFLOPS.\cite{flopsrtx4090}\
 
-Der Pi 4 ist für eine Vielzahl von Betriebssystemen ausgelegt, wobei Raspberry Pi OS (früher Raspbian) die offizielle Wahl ist. Diese benutzerfreundliche Linux-Distribution ist auf den Pi zugeschnitten und wird mit einer Fülle von \ 
-vorinstallierter Software geliefert, was es zu einer hervorragenden Wahl für Anfänger macht. Sie können jedoch auch andere Linux-Distributionen und sogar Windows 10 auf dem Pi 4 ausführen, je nach Ihren Bedürfnissen.
-
-Die GPIO-Pins (General Purpose Input/Output) des Raspberry Pi 4 ermöglichen Hardware-Schnittstellen und Prototyping. Diese Funktion ist besonders attraktiv für Bastler und Tüftler, die ihre eigenen elektronischen Projekte und \ 
-Automatisierungslösungen erstellen möchten.
-
-Neben dem Einsatz in der Ausbildung und im Hobbybereich hat der Raspberry Pi 4 auch seinen Weg in verschiedene professionelle Anwendungen gefunden. Er kann für \ 
-Heimautomatisierung, Robotik, Webserver und als Plattform für die Entwicklung und das Testen von Software verwendet werden. Dank seines geringen Stromverbrauchs \ 
-eignet er sich auch für eingebettete Systeme und IoT-Projekte (Internet der Dinge).
-
-Zusammenfassend lässt sich sagen, dass der Raspberry Pi 4 ein bemerkenswertes Stück Technologie ist, das die Grenzen dessen, was mit einem Einplatinencomputer \ 
-möglich ist, weiter verschiebt. Seine leistungsstarke Hardware, die vielfältigen Anschlussmöglichkeiten und die Unterstützung mehrerer Betriebssysteme machen \ 
-ihn zu einem vielseitigen Werkzeug für eine breite Palette von Anwendungen. Egal, ob Sie Student, Bastler oder Profi sind, der Raspberry Pi 4 bietet eine erschwingliche \ 
-und zugängliche Plattform zum Lernen, Experimentieren und für Innovationen.
-
-
-Zweite Version \break
-Der Raspberry Pi 4, der im Juni 2019 von der Raspberry Pi Foundation veröffentlicht wurde, ist ein kleiner, erschwinglicher und vielseitiger Einplatinencomputer. Er hat aufgrund seines kompakten Formfaktors und seiner Fähigkeiten große Aufmerksamkeit erregt.
-
-Zu den wichtigsten Hardwarekomponenten des Raspberry Pi 4 gehört eine Quad-Core-ARM-Cortex-A72-CPU, die eine erhebliche Verbesserung der Verarbeitungsleistung gegenüber den Vorgängermodellen darstellt. Er ist in drei Speicherkonfigurationen erhältlich: 2 GB, 4 GB und 8 GB RAM. Die Integration eines VideoCore VI-Grafikprozessors verbessert die Multimedia-Fähigkeiten und ermöglicht eine flüssige Videowiedergabe und 3D-Grafik-Rendering.
-
-Ein bemerkenswertes Merkmal des Raspberry Pi 4 sind die Anschlussmöglichkeiten. Er verfügt über zwei USB 3.0-Ports und zwei USB 2.0-Ports, die den Anschluss verschiedener Peripheriegeräte ermöglichen. Dualband-Wi-Fi (2,4GHz und 5GHz) und Gigabit-Ethernet sorgen für eine zuverlässige Netzwerkverbindung. HDMI- und Audioausgänge unterstützen hochauflösende Bildschirme und Audiogeräte.
-
-Der Raspberry Pi 4 bietet Unterstützung für zwei 4K-Displays und erweitert damit seine potenziellen Einsatzmöglichkeiten auf Digital Signage, Media Center und Multitasking-Szenarien.
-
-Das Gerät ist mit mehreren Betriebssystemen kompatibel, darunter Raspberry Pi OS (früher Raspbian), Linux-Distributionen und sogar Windows 10, je nach Vorlieben und Anforderungen des Benutzers.
-
-Die GPIO-Pins des Raspberry Pi 4 ermöglichen Hardware-Schnittstellen und Experimente, was ihn zu einem wertvollen Werkzeug für Maker und Entwickler macht.
-
-Die Anwendungen des Raspberry Pi 4 reichen von Bildungs- und Hobbyprojekten bis hin zu professionellen Unternehmungen. Er kann für Aufgaben wie Heimautomatisierung, Robotik, Webserver und Softwareentwicklung verwendet werden. Dank seines geringen Stromverbrauchs eignet er sich für eingebettete Systeme und Internet-of-Things-Anwendungen (IoT).
-
-Zusammenfassend lässt sich sagen, dass der Raspberry Pi 4 ein vielseitiger und kostengünstiger Einplatinencomputer ist, der für seine verbesserten Hardwarespezifikationen, Konnektivitätsoptionen und die Unterstützung für mehrere Betriebssysteme bekannt ist. Dank seines Potenzials zum Lernen, Experimentieren und für praktische Anwendungen erfreut er sich bei verschiedenen Nutzergruppen, von Studenten und Hobbyisten bis hin zu Profis, großer Beliebtheit.
+In dieser Arbeit wird der Raspberry Pi 4 B in vielen Fällen als Plattform für die Inferenz der Modelle verwendet. \
+Alle Laufzeitmessungen in dieser Arbeit müssen im Kontext dieser gerade beschriebenen Ressourcenbeschränktheit gesehen werden. \
