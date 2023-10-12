@@ -151,8 +151,8 @@ def get_default_PatchCoreModel():
     # backbone reduction
     model.layer_cut = True
     model.prune_output_layer = (False, [])
-    # model.coreset_sampling_ratio = 0.01 #1%
-    model.specific_number_of_examples = 1000
+    model.coreset_sampling_ratio = 0.1 #1%
+    # model.specific_number_of_examples = 1000
     # score calculation
     model.patchcore_scorer = True
     model.adapted_score_calc = False

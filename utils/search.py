@@ -17,27 +17,67 @@ import torch.nn.functional as F
 
 
 
-@jit(nopython=True)
-def mahalanobis_distance(patches, coreset, inv_cov_matrix):
-    """
-    Calculate the Mahalanobis distance using numba
-    """
-    n_patches = patches.shape[0]
-    n_samples = coreset.shape[0]
-    distances = np.empty(shape=(n_samples, n_patches))#, dtype=np.float16)
+# @jit(nopython=True)
+# def mahalanobis_distance(patches, coreset, inv_cov_matrix):
+#     """
+#     Calculate the Mahalanobis distance using numba
+#     """
+#     n_patches = patches.shape[0]
+#     n_samples = coreset.shape[0]
+#     distances = np.empty(shape=(n_samples, n_patches))#, dtype=np.float16)
 
-    for l in range(n_patches):
-        for i in range(n_samples):
-            diff = coreset[i] - patches[l]
-            # print(diff.shape)
-            a = np.dot(diff, inv_cov_matrix)
-            # print(a.shape)
-            b = np.dot(a, diff.T)
-            # print(b)
-            distances[i,l] = np.sqrt(b)#np.dot(np.dot(diff, inv_cov_matrix), diff)
-            # distances[i,l] = np.sqrt(np.dot(np.dot(diff, inv_cov_matrix), diff))
+#     for l in range(n_patches):
+#         for i in range(n_samples):
+#             diff = coreset[i] - patches[l]
+#             # print(diff.shape)
+#             a = np.dot(diff, inv_cov_matrix)
+#             # print(a.shape)
+#             b = np.dot(a, diff.T)
+#             # print(b)
+#             distances[i,l] = np.sqrt(b)#np.dot(np.dot(diff, inv_cov_matrix), diff)
+#             # distances[i,l] = np.sqrt(np.dot(np.dot(diff, inv_cov_matrix), diff))
+#     return distances
+
+import numpy as np
+from numba import jit
+
+# @jit(nopython=True)
+def mahalanobis(x, y, inv_cov):
+    diff = x - y
+    return np.sqrt(diff @ inv_cov @ diff.T)
+
+def mahalanobis_distances(X, y, cov):
+    # convert to numpy
+    X = X.cpu().numpy().astype(np.double)#.T
+    print('X: ', X.shape)
+    
+    y = y.cpu().numpy().astype(np.double)#.T
+    print('y: ', y.shape)
+    # cov = cov.cpu().numpy()
+    # inv_cov = np.linalg.inv(cov)
+    distances = np.zeros(X.shape[0])
+    for i in range(X.shape[0]):
+        # print()
+        a = mahalanobis(X[i], y, cov)
+        print(a.shape)
+        distances[i] = mahalanobis(X[i], y, cov)
     return distances
 
+@jit(nopython=True)
+def mahalanobis_taylor(x, y, inv_cov):
+    diff = x - y
+    a = np.dot(diff, inv_cov)
+    b = np.dot(a, diff.T)
+    c = np.dot(a, a.T)
+    d = np.dot(c, diff.T)
+    return np.sqrt(b) + 0.5 * np.trace(inv_cov @ d) - 0.25 * np.trace(inv_cov @ c @ inv_cov @ b)
+
+def mahalanobis_distances_taylor(X, y, cov):
+    inv_cov = np.linalg.inv(cov)
+    distances = np.zeros(X.shape[0])
+    for i in range(X.shape[0]):
+        distances[i] = mahalanobis_taylor(X[i], y, inv_cov)
+    return distances
 
 class NN():
     def __init__(self, X=None, Y=None, p=2):
@@ -90,7 +130,7 @@ class KNN(NN):
         #             }
         # self.metrices_dict = {metric: i for i, metric in enumerate(metrices)}
         self.metric = metric
-        # print(f"\nUsing metric: {self.metric}\n")
+        print(f"\nUsing metric: {self.metric}\n")
         if self.metric == 'mahalanobis':
             assert inv_cov is not None, "Need to provide inverse covariance matrix for mahalanobis distance"
             self.inv_cov = inv_cov
@@ -103,11 +143,11 @@ class KNN(NN):
 
     def predict(self, x):
         # print('self.k: ', self.k)
-        if self.p is None:
+        if self.p is None and not self.metric == 'mahalanobis':
             dist = torch.from_numpy(cdist(x, self.train_pts, metric=self.metric))
         elif self.metric == 'mahalanobis':
             # dist = torch.from_numpy(cdist(x, self.train_pts, metric=self.metric, VI=self.inv_cov))
-            dist = mahalanobis_distance(x, self.train_pts, self.inv_cov)
+            dist = mahalanobis_distances(x, self.train_pts, self.inv_cov)
         else:
             dist = torch.from_numpy(cdist(x, self.train_pts, metric=self.metric, p=self.p))
         knn = dist.topk(self.k, largest=False)

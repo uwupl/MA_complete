@@ -1456,13 +1456,13 @@ if __name__ == '__main__':
     model = PatchCore()#args=args)
     # model.test_dataloader()
     model.backbone_id = 'RN18'
-    model.layers_needed = [2]
+    model.layers_needed = [2,3]
     model.layer_cut = True
     # score calc
-    model.adapted_score_calc = False
+    model.adapted_score_calc = True
     model.n_neighbors = 4
     model.n_next_patches = 16
-    model.patchcore_scorer = True
+    model.patchcore_scorer = False
     # devices
     model.cuda_active = False
     model.cuda_active_training = False
@@ -1475,9 +1475,10 @@ if __name__ == '__main__':
     model.specific_number_of_examples = 1000
     model.multiple_coresets = [False, 3]
     # search
-    model.own_knn = False
+    model.own_knn = True
+    model.metric_id = 17
     model.faiss_standard = False
-    model.patchcore_score_patches = True
+    model.patchcore_score_patches = False
     # pooling
     model.pooling_embedding = True
     
@@ -1490,6 +1491,8 @@ if __name__ == '__main__':
     model.measure_inference = True
     model.warm_up_reps = 0
     model.number_of_reps = 2
+    model.reduce_via_entropy_normed = True
+    model.reduction_factor = 5
     # model.normalize = False
     # model.weight_by_entropy = True
     
