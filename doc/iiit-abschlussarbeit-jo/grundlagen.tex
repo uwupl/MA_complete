@@ -17,23 +17,23 @@ Der Datensatz besteht aus insgesamt 5354 Bildern, die 15 verschiedene Klassen vo
   \centering
   \begin{tabular}{|c|p{1.8cm}|p{1.8cm}|p{1.8cm}|p{1.8cm}|p{1.8cm}|p{1.8cm}|}
   \hline
-  Category & \#Train & \#Test (good) & \#Test (defective) & \#Defect groups & \#Defect regions & Image side length  \\
+  Kategorie & \#Training & \#Test (nominal) & \#Test (anomal) & \#Defekt Gruppen & \#Defekt Regionen & Seitenlänge  \\
   \hline
-  Carpet & 280 & 28 & 89 & 5 & 97 & 1024 \\ 
-  Grid & 264 & 21 & 57 & 5 & 170 & 1024 \\
-  Leather & 245 & 32 & 92 & 5 & 99 & 1024 \\ 
-  Tile & 230 & 33 & 84 & 5 & 86 & 840 \\
-  Wood & 247 & 19 & 60 & 5 & 168 & 1024  \\ 
-  Bottle & 209 & 20 & 63 & 3 & 68 & 900 \\
-  Cable & 224 & 58 & 92 & 8 & 151 & 1024 \\ 
-  Capsule & 219 & 23 & 109 & 5 & 114 & 1000 \\
-  Hazelnut & 391 & 40 & 70 & 4 & 136 & 1024 \\ 
-  Metal nut & 220 & 22 & 93 & 4 & 132 & 700 \\
-  Pill & 267 & 26 & 141 & 7 & 245 & 800 \\ 
-  Screw & 320 & 41 & 119 & 5 & 135 & 1024 \\
-  Toothbrush & 60 & 12 & 30 & 1 & 66 & 1024 \\ 
+  Teppich & 280 & 28 & 89 & 5 & 97 & 1024 \\ 
+  Gitter & 264 & 21 & 57 & 5 & 170 & 1024 \\
+  Leder & 245 & 32 & 92 & 5 & 99 & 1024 \\ 
+  Fließen & 230 & 33 & 84 & 5 & 86 & 840 \\
+  Holz & 247 & 19 & 60 & 5 & 168 & 1024  \\ 
+  Flasche & 209 & 20 & 63 & 3 & 68 & 900 \\
+  Kabel & 224 & 58 & 92 & 8 & 151 & 1024 \\ 
+  Kapsel & 219 & 23 & 109 & 5 & 114 & 1000 \\
+  Haßelnuss & 391 & 40 & 70 & 4 & 136 & 1024 \\ 
+  Metallmutter & 220 & 22 & 93 & 4 & 132 & 700 \\
+  Pille & 267 & 26 & 141 & 7 & 245 & 800 \\ 
+  Schraube & 320 & 41 & 119 & 5 & 135 & 1024 \\
+  Zahnbürste & 60 & 12 & 30 & 1 & 66 & 1024 \\ 
   Transistor & 213 & 60 & 40 & 4 & 44 & 1024 \\
-  Zipper & 240 & 32 & 119 & 7 & 177 & 1024 \\
+  Reißverschluss & 240 & 32 & 119 & 7 & 177 & 1024 \\
   \hline
   Total & 3629 & 467 & 1258 & 73 & 1888 & - \\
   \hline
@@ -458,108 +458,3 @@ auf eben jene Faltungsschichten (CNNs) zurückgreifen. \
   \caption{Laufzeiten der Modelle auf verschiedenen Plattformen}
   \label{tab:model-runtimes}
 \end{table}
-
-
-
-% \begin{figure}[htbp]
-%   \centering
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_1.png}
-%     \caption{AUROC = 1.0}
-%     \label{fig:auroc_1}
-%   \end{minipage}
-%   \hfill
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_07.png}
-%     \caption{AUROC = 0.7}
-%     \label{fig:auroc_07}
-%   \end{minipage}
-% \end{figure}
-
-% \begin{figure}[htbp]
-%   \centering
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_05.png}
-%     % \caption{AUROC = 0.5}
-%     \label{fig:auroc_05}
-%   \end{minipage}
-%   \hfill
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_0.png}
-%     % \caption{AUROC = 0.0}
-%     \label{fig:auroc_0}
-%   \end{minipage}
-% \end{figure}
-
-% \begin{figure}[htbp]
-%   \centering
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_1.png}
-%     \caption{AUROC = 1.0}
-%     \label{fig:auroc_1}
-%   \end{minipage}
-%   \hfill
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_07.png}
-%     \caption{AUROC = 0.7}
-%     \label{fig:auroc_07}
-%   \end{minipage}
-% \end{figure}
-
-% \begin{figure}[htbp]
-%   \centering
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_05.png}
-%     \caption{AUROC = 0.5}
-%     \label{fig:auroc_05}
-%   \end{minipage}
-%   \hfill
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_0.png}
-%     \caption{AUROC = 0.0}
-%     \label{fig:auroc_0}
-%   \end{minipage}
-% \end{figure}
-
-
-% \begin{figure}[htbp]
-%   \centering
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_1.png}
-%     \caption{AUROC = 1.0}
-%     \label{fig:auroc_1}
-%   \end{minipage}
-%   \hfill
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_07.png}
-%     \caption{AUROC = 0.7}
-%     \label{fig:auroc_07}
-%   \end{minipage}
-  
-%   \vspace{0.5cm}
-  
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_05.png}
-%     \caption{AUROC = 0.5}
-%     \label{fig:auroc_05}
-%   \end{minipage}
-%   \hfill
-%   \begin{minipage}{0.45\textwidth}
-%     \centering
-%     \includegraphics[width=\textwidth]{bilder/auc_0.png}
-%     \caption{AUROC = 0.0}
-%     \label{fig:auroc_0}
-%   \end{minipage}
-% \end{figure}
-% \end{document}

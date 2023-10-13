@@ -1,7 +1,7 @@
 % -*- TeX -*- -*- DE -*-
 
 \chapter{PatchCore \cite{patchcore}}\label{ch:PatchCore}
-\subsection{Einleitung}
+\section{Einleitung}\label{sec:EinleitungPatchCore}
 Die Methode \textbf{PatchCore} wurde erstmals am 15. Juni 2021 in Zusammenarbeit der Universität Tübingen und Amazon AWS im Paper \glqq Towards Total \ 
 Recall in Industrial Anomaly Detection\grqq{} veröffentlicht. \ 
 In seiner zweiten Fassung vom 5. Mai 2022 wurde das Paper bei der Konferenz CVPR 2022 (Computer Vision and Pattern Recognition) akzeptiert und mit \ 
@@ -71,28 +71,158 @@ vorgestellt wird und die Größe des Receptive Fields steuert.\\
 Dafür wird die oben eingeführte Notation für $\phi_{i,j}(h,w)$ um eine ungerade Feldgröße (\glqq patchsize\grqq{}) $p$ erweitert, die die benachbarten Feauture Vektoren \
 mit einbezieht. Zunächst wird diese Nachbarschaft wie folgt definiert:\
 $$
-\mathcal{N}_{p}^{(h,w)} = \{(a,b)| a \in [h-\left\lfloor \frac{p}{2}\right\rfloor,...,h+\left\lfloor \frac{p}{2} \right\rfloor], b \in [w-\left\lfloor \frac{p}{2}\right\rfloor,...,w+\left\lfloor \frac{p}{2}\right\rfloor]\}
+\mathcal{N}_{p}^{(h,w)} = \left\{(a,b)| a \in \left[h-\left\lfloor \frac{p}{2}\right\rfloor,...,h+\left\lfloor \frac{p}{2} \right\rfloor\right], b \in \left[w-\left\lfloor \frac{p}{2}\right\rfloor,...,w+\left\lfloor \frac{p}{2}\right\rfloor\right]\right\}
 $$ 
-Damit ergeben sich schließlich die \glqq Patch Features\grqq{} zu\
+Damit ergeben sich schließlich ein \glqq Patch Feature\grqq{} zu\
 $$
 \phi_{i,j}\Big(\mathcal{N}_{p}^{(h,w)}\Big) = f_{agg}\Big(\{\phi_{i,j}(a,b)| (a,b) \in \mathcal{N}_{p}^{(h,w)}\}\Big),
 $$
 wobei $f_{agg}$ eine Aggregationsfunktion ist. Die Aggregationsfunktionsfunktion, die in der PatchCore Methode verwendet wird, ist ein adptives \glqq Average Pooling\grqq{}, \
-in einer Dimension, die unabhängig von der Länge der Eingangsfeature, immer eine feste Länge $d$ ausgibt.\
-%  Hier wird kurz angerissen, was es mit PatchCore auf sich hat. 
-% \begin{itemize}
-%     \item Popularität, Erscheinungsdatum, Performance, Ersteller, Zitierungen
-%     \item Wie funktioniert PatchCore
-%     \begin{itemize}
-%         \item Training
-%         \item Inferenz/Test
-%     \end{itemize}
-%     \item Implementierung
-%     \item Baseline
-%     \item Anpassungen
-%     \item Fazit
-% \end{itemize}
-% NUR DER FCK!
+in einer Dimension, die unabhängig von der Länge der Eingangsfeature, immer eine feste Länge $d$ ausgibt.\\
+Da diese Operation für alle Paare von $(h,w)$ mit $h\in\{1,...,h^{*}\}$ und $w\in\{1,...,w^{*}\}$ durchgeführt wird, wird die Auflösung der Feature Map erhalten.
+Für einen gesamten Feature Map Tensor ergibt sich dementsprechend:\
+$$
+\mathcal{P}_{s,p}\left(\phi_{i,j}\right) = \left\{\phi_{i,j}\Big(\mathcal{N}_{p}^{(h,w)}\Big)| h\in\{1,...,h^{*}\}, w\in\{1,...,w^{*}\}\right\}
+$$
+Wie bereits erwähnt, geschieht diese Operation für verschiedene Hierarchielevel $j$.\ Weil die Auflösung der Feature Maps mit steigendem Hierarchielevel abnimmt, \
+wird $\mathcal{P}_{s,p}\left(\phi_{i,j+1}\right)$ berechnet und anschließend auf die Auflösung von $\mathcal{P}_{s,p}\left(\phi_{i,j}\right)$ bilinear interpoliert.\ 
+Jedes Element wird dann mit dem korrespondieren Element, also dem Element an der gleichen Stelle, aggregiert.\
+Würde auf eine Auswahl der Patch Feature, wie im folgenden Abschnitt erläutert, verzichtet, würde sich folgende Memory-Bank ergeben:
+$$
+\mathcal{M} = \bigcup_{x_i\in\mathcal{X}_{train}}\mathcal{P}_{s,p}\left(\phi_{i,j}\right)
+$$
+\subsection{Coreset Subsampling}\label{subsec:CoresetSubsampling}
+Insbesondere, wenn $\mathcal{X}_{train}$ eine große Kardinalität hat, also viele Bilder hat, wird die Memory-Bank $\mathcal{M}$ sehr groß. Wie bereits in \ref{sec:SPADE} festgestellt \
+ist diese Kardinalität besonders laufzeitkritisch, weil die Nächste Nachbar Suche in der Memory-Bank mit einer Komplexität von $\mathcal{O}(n)$ berechnet wird. \ 
+Wie bereits in \ref{sec:PaDiM} zu sehen, ist ein \glqq patchbasierter\grqq{} Vergleich zwischen allen Elementen in $\mathcal{M}$ und allen Elemnten in $\mathcal{P}_{s,p}\left(\phi_{i,j}\right)$ \
+ein notwediger Schritt, nicht nur um die Anomaliekarte zu erstellen, die in dieser Arbeit ohnehin von keinem großen Interesse ist, sondern auch um eine robuste und \ 
+präzise Instanzklassifizierung durchzuführen. Für die Laufzeitoptimierung ist es also wünschenswert, die Kardinalität der Memory-Bank zu reduzieren.\\
+Auf der anderen Seite müssen die Elemente in $\mathcal{M}$ möglichst gut nominale Eigenschaften abbilden, um eine gute Anomaliedetektion zu ermöglichen.\
+Wie in der Veröffentlichung gezeigt wird, (§4.4.2 - Importance of Coreset Subsampling) führt der naive Ansatz, zufällig Elemente aus $\mathcal{M}$ auszuwählen, \
+nicht zu zufriedenstellenden Ergebnissen.\\
+Das von PatchCore zugrundeliegenden Konzept setzt genau hier an. Es soll eine Teilmenge $\mathcal{S}\subset \mathcal{A}$ gefunden werden, bei der die Problemlösung \
+über $\mathcal{A}$ am ehesten und vor allem schneller durch die über $\mathcal{S}$ berechnete Lösung approximiert werden kann. Dabei ist die Methode, \
+die zu einer solchen Teilmenge führt, problemspezifisch. Im Falle von PatchCore wird eine Berechnung von Nächsten Nachbarn durchgeführt, \
+weswegen gemäß \cite{sener2018active} ein \glqq MiniMax-Funktion\grqq{} sich anbietet, um eine annähernd ähnliche Abdeckung der $\mathcal{M}$ mit $\mathcal{M_{C}}$ zu erreichen.\
+Dies kann wie folgt gelöst werden:\
+$$
+\mathcal{M_{C}^{*}} = \underset{\mathcal{M}_{C}\subset\mathcal{M}}{\arg\min}\underset{m\in\mathcal{M}}{\max}\underset{n\in\mathcal{M_{C}}}{\min}\left\|m-n\right\|_{2}
+$$
+Die exakte Berechnung von $\mathcal{M_{C}^{*}}$ ist NP-schwer, also nicht in polynomieller Zeit berechenbar.\
+Es handelt sich zwar um einen Prozess, der nicht während der Inferenz durchgeführt werden muss, sondern einmalig während der Trainingsphase, \
+aber es muss dennoch mit iterativen, approximierenden Verfahren gearbeitet werden.\\
+Aus \cite{sener2018active} wird ein \glqq Greedy Algorithmus\grqq{} übernommen, der iterativ Elemente aus $\mathcal{M}$ auswählt, die die größte Distanz zu allen bereits ausgewählten Elementen haben.\
+Um die Laufzeit des Subsamplings weiter zu reduzieren, wird das \glqq Johnson-Lindenstrauss Lemma\grqq{}\cite{johnsonlindenstrauss} verwendet, um die Dimensionalität der Elemente $m\in\mathcal{M}$ \ 
+durch zufällige lineare Projektion $\psi: \mathbb{R}^{d} \rightarrow \mathbb{R}^{d^{*}}$ mit $d^{*}<d$ zu reduzieren. Anschaulich kann dies durch eine Punktwolke erklärt werden, die aus zufälligen Blickwinkeln betrachtet wird, wodurch die 3-D-Struktur als 2-D Struktur\
+angenähert wird. (TODO --> Algorithmus?)\\
+\subsection{Bestimmen des Anomaliegrades}\label{subsec:BestimmenDesAnomaliegradesPatchcore}
+Wie bereits in der Einleitung zu diesem Katpitel erwähnt, ist die Grundlage der Bestimmung des Anomaliegrades die Distanz zu den Nächsten Nachbarn in der Memory-Bank.\ 
+Das gilt sowohl für die Anomaliekarte bzw. die Segmentierung, als auch für die Instanzklassifizierung. \
+Zunächst muss während der Inferenz aus einem Testbild $x_{i}\in\mathcal{X}_{test}$ die Patch Features extrahiert werden. Dies geschieht auf die gleiche Weise, wie in der Trainingsphase:\
+$$
+\mathcal{P}\left(x_{i}\right)= \mathcal{P}_{p}\left(\phi_{j}\left(x_{i}\right)\right)
+$$
+Diese Menge $\mathcal{P}\left(x_{i}\right)$ enthält nun die Patch Features $m^{test}$ des Testbildes $x_{i}$. Nun gilt es zu jedem Patch Feature in $\mathcal{P}\left(x_{i}\right)$ \
+den Nächsten Nachbarn in der Memory Bank $\mathcal{M}$ zu finden:\
+$$
+m^{*} = \underset{m\in\mathcal{M}}{\arg\min}\left\|m-m^{test}\right\|_{2}, \forall m^{test}\in\mathcal{P}\left(x_{i}\right)
+$$
+Es gilt zu beachten, dass jedes $m^{test}$ zu einer Position $(h,w)$ im Bild $x_{i}$ gehört.\
+So kann eine räumlich aufgelöste Anomaliekarte $M$ erzeugt werden, die die Distanz zu den Nächsten Nachbarn in der Memory-Bank enthält:
+$$
+% M = \left\{m^{*}(h,w)| m^{*} = \underset{m\in\mathcal{M}}{\arg\min}\left\|m-m^{test}\right\|_{2}, \forall m^{test}\in\mathcal{P}\left(x_{i}\right)\right\}
+M = \Big(\left\|m^{*}_{h,w}-m^{test}_{h,w}\right\|_{2}\Big)_{h,w},\forall \left(h,w\right)\in\{1,...,h^{*}\}\times\{1,...,w^{*}\} % m^{test}_{h,w}\in\mathcal{P}\left(x_{i}\right)
+$$
+Diese Anomaliekarte $M$ kann schließlich mittels bilinearer Interpolation und einer anschließenden Glättung auf die Auflösung des Originalbildes $x_{i}$ gebracht werden, wodurch eine \
+pixelweise Klassifikationskarte möglich wird. Weil dies in dieser Arbeit nicht von Interesse ist, wird darauf nicht weiter eingegangen.\\
+Die Instanzklassifizierung könnte nun analog zu PaDiM (\ref{subsec:PaDiMFunktionsweise}) durch Maximalwerbildung durchgeführt werden.\
+Die Autoren von PatchCore gehen ähnlich vor, fügen jedoch noch einen Gewichtungsschritt hinzu.\
+Zunächst wird ganz analog vorgegangen und die maximale Distanz zu den Nächsten Nachbarn herangezogen, was nichts anderes als der Maximalwert der Anomaliekarte $M$ ist.\
+$$
+m^{test,*}, m^{\star}=\underset{m^{test}\in\mathcal{P}(x_{i})}{\arg\max}\underset{m\in\mathcal{M}}{\arg\min}\left\|m-m^{test}\right\|_{2}
+$$
+$$
+s^{*}=\left\|m^{test,*}-m^{\star}\right\|_{2}=\max\{M\}
+$$
+Die Gewichtung schließt die nächsten $b$ Patch Features in $M$ zu $m^{\star}$ mit ein. Diese Menge notieren wir als $\mathcal{N}_{b}\left(m^{\star}\right)$.\
+Der Gedanke hinter dieser Gewichtung ist, den Anomaliegrad $s$ dann zu erhöhen, wenn die Feature Patches in $\mathcal{N}_{b}\left(m^{\star}\right)$ selbst \
+weit entfernt vom Anomaliekandidaten Patch Feature $m^{\star}$ sind und es sich somit ohnehin um seltene nominale Patch Features handelt. \
+Der finale, für die Instanzklassifiziergung entscheidende Anomaliegrad $s$ ergibt sich dann zu:\
+$$
+s = \left(1-\frac{e^{\left\|m^{\star}-m^{test,*}\right\|_{2}}}{\sum\nolimits_{m\in\mathcal{N}_{b}\left(m^{\star}\right)}e^{\left\|m-m^{test,*}\right\|_{2}}}\right) \cdot s^{*}
+$$
+Durch diese Gewichtung wird die Instanzklassifizierung robuster und erhöht die Instanzklassifiziergungsgenauigkeit, wodurch es eine weitere Weitereentwicklung gegenüber PaDiM darstellt.\
+\section{Ergebnisse und Diskussion der Originalmethode}\label{sec:ErgebnisseUndDiskussionDerOriginalmethode}
+In diesem Abschnitt werden die Ergebnisse der Originalmethode PatchCore vorgestellt und diskutiert.\
+Dies soll vor allem im Hinblick auf die Eignung für eine Implementierung auf einem ressourcenbeschränkten Gerät, nämlich einem RaspberryPi 4B (\ref{sec:RaspberryPi4B}) geschehen.\
+Es wird sich dabei auf den hier verwendeten Datensatz MVTecAD (\ref{sec:DatensatzMVTecAD}) bezogen. Weitere Datensätze, die in der Veröffentlichung verwendet wurden, \
+werden mit dem Verweis auf die Veröffentlichung nicht weiter betrachtet. Die zur Evaluation herangezogene Metrik ist AUROC (\ref{sec:AUROC}).\\
+Wie bereits in der Einleitung erwähnt, ist die Methode PatchCore grundsätzlich in der Lage, sehr hohe Instanzklassifiziergungsgenauigkeiten zu erreichen, die auch zwei Jahre nach \
+Veröffentlichung noch zu den besten gehören. Erreicht wird dies teilweise durch ein Ensemble von verschiendenen Feature Extraktoren bzw. Backbones und höhere Auflösungen.\
+So wird ein \glqq DenseNet 201\grqq{}\cite{densenet}, ein \glqq ResNext 101\grqq{}\cite{resnext} und ein bereits bekanntes Wide ResNet mit 101 Schichten\cite{wideresnet} verwendet. \
+Steht eine GPU zur Verfügung, welche, wie in \ref{tab:model-runtimes} zu sehen, die Laufzeit von CNNs deutlich reduziert, können selbst mit einer solchen Konfiguration, bestehend aus \
+vielen Backbones, einigermaßen schnelle Inferenzzeiten erreicht werden.\
+Da die Zielsetzung dieser Arbeit jedoch die Implementierung auf einem RaspberryPi 4B ist und bereits gezeigt wurde, dass das Ausführen von CNNs auf einem solchen Gerät \
+äußerst laufzeitkritisch ist, ist eine solche Konfiguration im Kontext dieser Arbeit nicht sinnvoll.\
+Beschränken wir uns auf Konfigurationen, mit nur einem Backbone und auf die Auflösung von $256\times 256$ Pixeln, so erreicht PatchCore mit einem Wide ResNet-50 Backbone eine \
+Instanzklassifiziergungsgenauigkeit (AUROC) von \num{99,1} mit einer Reduktion der Memory Bank auf \num{25}\%. Wird die Größe der Memory Bank auf \num{1}\% reduziert, \
+verschlechtert sich der AUROC nur leicht auf \num{99,0}\%. Wie im Laufe dieses Kapitels noch zu sehen sein wird, ist die Reduzierung der Kardinalität der Memory Bank \
+ein wichtiger Schritt, um die Laufzeit zu reduzieren. Die hier angewandte Methode des Coreset Subsamplings ist also ein wichtiger Bestandteil und eine Errungenschaft \ 
+der Methode PatchCore.\\
+Neben dem Erzeugen der Patch Feature ist die Nächste Nachbar Suche in der Memory Bank besonder laufzeitkritisch. In der Veröffentlichung lediglich eine kleine Randnotiz im Anhang, \
+ist diese Suche mit \glqq FAISS\grqq{} (TODO --> ref und cite) implementiert. FAISS ist eine Bibliothek, entwickelt von Facebook's AI Research Department, die die Nächste Nachbar Suche \ 
+enorm beschleunigt und im Laufe dieses Kapitels nochmal genauer erläuert und analysiert wird.\\
+Insgesamt ist die Methode PatchCore zwar in ihrer Originalform eine ausgezeichnete Basis, aber für die Implementierung auf einem RaspberryPi 4B nur eingeschränkt geeignet.\
+Es werden im Folgenden zahlreiche Adaptionen vorgestellt und evaluiert, die das Ziel haben, die Laufzeit zu reduzieren und dabei möglichst viel der Genauigkeit zu erhalten.\ 
+% $$
+% % \begin{aligned}
+% m^{\text {test }, *}, m^* & =\underset{m^{\text {test }} \in \mathcal{P}\left(x^{\text {test }}\right)}{\arg \max } \underset{m \in \mathcal{M}}{\arg \min }\left\|m^{\text {test }}-m\right\|_2 \\
+% s^* & =\left\|m^{\text {test }, *}-m^*\right\|_2 .
+% % \end{aligned}
+% $$
+% % \begin{tabular}{l}
+%     \hline Algorithm 1: PatchCore memory bank. \\
+%     \hline Input: Pretrained $\phi$, hierarchies $j$, nominal data \\
+%     \\
+%     $\quad \mathcal{X}_N$, stride $s$, patchsize $p$, coreset target $l$, \\
+%     random linear projection $\psi$. \\
+%     Output: Patch-level Memory bank $\mathcal{M}$. \\
+%     Algorithm: \\
+%     $\mathcal{M} \leftarrow\{\}$ \\
+%     for $x_i \in \mathcal{X}_N$ do \\
+%     | $\mathcal{M} \leftarrow \mathcal{M} \cup \mathcal{P}_{s, p}\left(\phi_j\left(x_i\right)\right)$ \\
+%     end \\
+%     /* Apply greedy coreset selection. \\
+%     $\mathcal{M}_C \leftarrow\{\}$ \\
+%     for $i \in[0, \ldots, l-1]$ do \\
+%     $\quad m_i \leftarrow \underset{m \in \mathcal{M}-\mathcal{M}_C n \in \mathcal{M}}{\arg \max }\|\psi(m)-\psi(n)\|_2$ \\
+%     $\quad \mathcal{M}_C \leftarrow \mathcal{M}_C \cup\left\{m_i\right\}$ \\
+%     end \\
+%     $\mathcal{M} \leftarrow \mathcal{M}_C$
+% \end{tabular}
+
+% $$
+% \begin{aligned}
+% & \hline \text { Algorithm 1: PatchCore memory bank. } \\
+% & \hline \text { Input: Pretrained } \phi \text {, hierarchies } j \text {, nominal data } \\
+% & \\
+% & \quad \mathcal{X}_N \text {, stride } s \text {, patchsize } p \text {, coreset target } l, \\
+% & \text { random linear projection } \psi \text {. } \\
+% & \text { Output: Patch-level Memory bank } \mathcal{M} . \\
+% & \text { Algorithm: } \\
+% & \mathcal{M} \leftarrow\{\} \\
+% & \text { for } x_i \in \mathcal{X}_N \text { do } \\
+% & \text { | } \mathcal{M} \leftarrow \mathcal{M} \cup \mathcal{P}_{s, p}\left(\phi_j\left(x_i\right)\right) \\
+% & \text { end } \\
+% & \text { /* Apply greedy coreset selection. } \\
+% & \mathcal{M}_C \leftarrow\{\} \\
+% & \text { for } i \in[0, \ldots, l-1] \text { do } \\
+% & \quad m_i \leftarrow \underset{m \in \mathcal{M}-\mathcal{M}_C n \in \mathcal{M}}{\arg \max }\|\psi(m)-\psi(n)\|_2 \\
+% & \quad \mathcal{M}_C \leftarrow \mathcal{M}_C \cup\left\{m_i\right\} \\
+% & \text { end } \\
+% & \mathcal{M} \leftarrow \mathcal{M}_C
+% \end{aligned}
+% $$
 
 \section{Baseline}
 \label{sec:Baseline}
