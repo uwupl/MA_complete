@@ -1,0 +1,203 @@
+% This file was created with tikzplotlib v0.10.1.
+\begin{tikzpicture}[scale=0.5]
+  \newcommand{\widthplot}{0.7}
+  \newcommand{\heightplot}{0.48}
+  \newcommand{\anchorx}{1.1}
+  \newcommand{\backonename}{Wide ResNet-50}
+  \newcommand{\devicename}{Ryzen 5 5600X}
+
+
+\definecolor{crimson}{RGB}{220,20,60}
+\definecolor{darkgoldenrod}{RGB}{184,134,11}
+\definecolor{darkgray176}{RGB}{176,176,176}
+\definecolor{gray}{RGB}{128,128,128}
+\definecolor{lightgray204}{RGB}{204,204,204}
+\definecolor{purple}{RGB}{128,0,128}
+\definecolor{slateblue}{RGB}{106,90,205}
+
+\begin{axis}[  
+  width=\widthplot\textwidth,
+  height=\heightplot\textwidth,
+% legend cell align={{left},extra x ticks={0}},
+% extra x tick labels={Backbone: ResNet-50\\Device: CPU},
+% extra x tick style={tickwidth=0pt},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(\anchorx,0.00)},
+  anchor=south west
+},
+tick align=outside,
+tick pos=left,
+title={tmp},
+x grid style={darkgray176},
+xmin=-0.538, xmax=2.498,
+xtick style={color=black},
+xtick={0,1,2},
+xticklabels={
+  {
+\bfseries PatchCore:\\Search, Embedding (192)\\Adapted Score Calc\\192 Merkmalslaenge},
+{PatchCore:\\Embedding (384)\\Adapted Score Calc + Own KNN\\384 Merkmalslaenge},
+{PatchCore:\\Embedding (192)\\Adapted Score Calc + Own KNN\\192 Merkmalslaenge}
+  },
+xticklabel style={{align=center},y grid style={darkgray176}, rotate=45.0, yshift=12pt,xshift=12pt},
+ylabel={(Lauf-) Zeit [ms]},
+% label style={font=\fontsize{12}{14}\selectfont},
+ymin=0, ymax=100,
+ytick style={color=black},
+ytick={0,20,40,60,80,100},
+yticklabels={{0,0},{20,0},{40,0},{60,0},{80,0},{100,0}}
+]
+\draw[draw=none,fill=crimson] (axis cs:-0.4,0) rectangle (axis cs:0,9.22161102294922);
+\addlegendimage{ybar,ybar legend,draw=none,fill=crimson}
+\addlegendentry{Extraktion}
+
+\draw[draw=none,fill=crimson] (axis cs:0.6,0) rectangle (axis cs:1,9.24572658538818);
+\draw[draw=none,fill=crimson] (axis cs:1.6,0) rectangle (axis cs:2,10.9772291183472);
+\draw[draw=none,fill=purple] (axis cs:-0.4,9.22161102294922) rectangle (axis cs:0,15.6351671218872);
+\addlegendimage{ybar,ybar legend,draw=none,fill=purple}
+\addlegendentry{Einbettung}
+
+\draw[draw=none,fill=purple] (axis cs:0.6,9.24572658538818) rectangle (axis cs:1,16.2714972496033);
+\draw[draw=none,fill=purple] (axis cs:1.6,10.9772291183472) rectangle (axis cs:2,18.726692199707);
+\draw[draw=none,fill=slateblue] (axis cs:-0.4,15.6351671218872) rectangle (axis cs:0,16.8189399242401);
+\addlegendimage{ybar,ybar legend,draw=none,fill=slateblue}
+\addlegendentry{NN-Suche}
+
+\draw[draw=none,fill=slateblue] (axis cs:0.6,16.2714972496033) rectangle (axis cs:1,87.2139410972595);
+\draw[draw=none,fill=slateblue] (axis cs:1.6,18.726692199707) rectangle (axis cs:2,58.6836013793945);
+\draw[draw=none,fill=darkgoldenrod] (axis cs:-0.4,16.8189399242401) rectangle (axis cs:0,17.1661679446697);
+\addlegendimage{ybar,ybar legend,draw=none,fill=darkgoldenrod}
+\addlegendentry{Anomaliegrad}
+
+\draw[draw=none,fill=darkgoldenrod] (axis cs:0.6,87.2139410972595) rectangle (axis cs:1,87.5636786222458);
+\draw[draw=none,fill=darkgoldenrod] (axis cs:1.6,58.6836013793945) rectangle (axis cs:2,59.0766642689705);
+\draw (axis cs:-0.2,9.22161102294922) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{9,22};
+\draw (axis cs:0.8,9.24572658538818) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{9,25};
+\draw (axis cs:1.8,10.9772291183472) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{10,98};
+\draw (axis cs:-0.2,17.1661679446697) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{17,17};
+\draw (axis cs:0.8,87.5636786222458) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{87,56};
+\draw (axis cs:1.8,59.0766642689705) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{59,08};
+\end{axis}
+
+\begin{axis}[  
+  width=\widthplot\textwidth,
+  height=\heightplot\textwidth,
+axis y line=right,
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(\anchorx,1.00)},
+  anchor=north west
+},
+tick align=outside,
+x grid style={darkgray176},
+xmin=-0.538, xmax=2.498,
+xtick pos=left,
+xtick style={color=black},
+xtick={0,1,2},
+xticklabels={},
+y grid style={darkgray176},
+ylabel={AUROC [\%]},
+ymin=50, ymax=105,
+ytick pos=right,
+ytick style={color=black},
+yticklabel style={anchor=west}
+]
+\draw[draw=none,fill=black] (axis cs:0.04,0) rectangle (axis cs:0.16,98.5661745071411);
+\addlegendimage{ybar,ybar legend,draw=none,fill=black}
+\addlegendentry{Granulat}
+
+\draw[draw=none,fill=black] (axis cs:1.04,0) rectangle (axis cs:1.16,98.5031485557556);
+\draw[draw=none,fill=black] (axis cs:2.04,0) rectangle (axis cs:2.16,98.5714256763458);
+\draw[draw=none,fill=gray] (axis cs:0.24,0) rectangle (axis cs:0.36,97.7773904800415);
+\addlegendimage{ybar,ybar legend,draw=none,fill=gray}
+\addlegendentry{MVTecAD}
+
+\draw[draw=none,fill=gray] (axis cs:1.24,0) rectangle (axis cs:1.36,97.8362500667572);
+\draw[draw=none,fill=gray] (axis cs:2.24,0) rectangle (axis cs:2.36,97.896546125412);
+\draw (axis cs:0.1,98.5661745071411) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{98,6};
+\draw (axis cs:1.1,98.5031485557556) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{98,5};
+\draw (axis cs:2.1,98.5714256763458) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{98,6};
+\draw (axis cs:0.3,97.7773904800415) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{97,8};
+\draw (axis cs:1.3,97.8362500667572) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{97,8};
+\draw (axis cs:2.3,97.896546125412) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{97,9};
+\end{axis}
+
+
+% \node[anchor=west] at (3,2) {Your annotation text};
+  % Annotation
+% \node [anchor=south west, align=left, at={(1.0, 0.0)}], {%\heightplot\textwidth0.5\textheight) {%
+%   Backbone: \backonename \\
+%   Device: \devicename
+% };
+\newcommand{\auxwidth}{0.5}
+\node [anchor=center, align=center, rotate=90.0] at (1.1*\widthplot\textwidth, 0.47*\heightplot\textwidth) {%
+  %\heightplot\textwidth0.5\textheight) {%
+  Backbone:\\ \backonename \\
+  Device:\\ \devicename
+};
+\end{tikzpicture}

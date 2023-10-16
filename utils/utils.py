@@ -25,6 +25,10 @@ import numpy as np
 import PIL
 import torch
 import tqdm
+import locale
+
+locale.setlocale(locale.LC_NUMERIC, 'de_DE.UTF-8')
+plt.rcParams['axes.formatter.use_locale'] = True
 
 
 def cvt2heatmap(gray):
@@ -253,17 +257,41 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
 
 def plot_results(labels, feature_extraction, embedding, search, calc_distances, own_auc, MVTechAD_auc, storage, feature_length, 
                  fig_size = (20,10), title = 'Comparison', only_auc = False, width = 0.4, show_f_length = False, show_storage = False, 
-                 loc_legend = (1.15, 0.06), bar_labels = ['feature extraction', 'embedding', 'search', 'calc scores'],
+                 loc_legend = (1.15, 0.06), bar_labels = ['feature extraction', 'embedding', 'search', 'calc scores'], german=True,
                  save_fig = False, res_path = PLOT_DIR, show = True):
     '''
     visualizes results in bar chart
     '''
+    # mpl.rc('text', usetex=True)
+    
     font_scaler = 1.0
+    # font = {'fontname':'FreeSerif'}
+    if german:
+        bar_labels_inference = ['Extraktion', 'Einbettung', 'NN-Suche', 'Anomaliegrad']
+        # title = 'Vergleich'
+        bar_labels_auc = ['Granulat', 'MVTecAD']
+        y_label_inference = '(Lauf-) Zeit [ms]'
+        delimiter = '.'
+        f_l = ' Merkmalslaenge'
+        locale.setlocale(locale.LC_ALL, 'de_DE')
+        plt.rcParams['axes.formatter.use_locale'] = True
+        # plt.rcParams['axes.
+    else:
+        bar_labels_inference = ['feature extraction', 'embedding', 'search', 'calc scores']
+        # title = 'Comparison'
+        bar_labels_auc = ['Own Dataset', 'MVTechAD (mean)']
+        y_label_inference = 'run time [ms] (mean)'
+        delimiter = '.'
+        f_l = 'feature length'
+    
+    loc_legend = (1.15, 0.06)
+    # latex font style
+    font = {'fontname':'FreeSerif'}
     
     if show_f_length:
         new_labels = []
         for k in range(len(labels)):
-            new_labels += [labels[k] + '\n' + str(int(feature_length[k])) + ' feature-length']
+            new_labels += [labels[k] + '\n' + str(int(feature_length[k])) + f_l]
         del labels
         labels = new_labels
         del new_labels
@@ -285,33 +313,38 @@ def plot_results(labels, feature_extraction, embedding, search, calc_distances, 
 
     if not only_auc:
         ax_2 = ax.twinx()
-        rects1 = ax.bar(x - 0.5*width, feature_extraction, width, label=bar_labels[0], color = 'crimson')
-        rects2 = ax.bar(x - 0.5*width, embedding, width, label=bar_labels[1], bottom=feature_extraction, color = 'purple')
-        rects3 = ax.bar(x - 0.5*width, search, width, label=bar_labels[2], bottom=list(np.array(embedding) + np.array(feature_extraction)), color = 'slateblue')
-        rects4 = ax.bar(x - 0.5*width, calc_distances, width, label=bar_labels[3],bottom=list(np.array(embedding) + np.array(feature_extraction) + np.array(search)), color = 'darkgoldenrod')
+        rects1 = ax.bar(x - 0.5*width, feature_extraction, width, label=bar_labels_inference[0], color = 'crimson')
+        rects2 = ax.bar(x - 0.5*width, embedding, width, label=bar_labels_inference[1], bottom=feature_extraction, color = 'purple')
+        rects3 = ax.bar(x - 0.5*width, search, width, label=bar_labels_inference[2], bottom=list(np.array(embedding) + np.array(feature_extraction)), color = 'slateblue')
+        rects4 = ax.bar(x - 0.5*width, calc_distances, width, label=bar_labels_inference[3],bottom=list(np.array(embedding) + np.array(feature_extraction) + np.array(search)), color = 'darkgoldenrod')
         # rects4 = ax.bar(x - 0.5*width, anomaly_map, width, label='anomaly map',bottom=list(np.array(embedding_cpu) + np.array(feature_extraction_cpu) + np.array(search_memory)), color = 'darkgoldenrod')
-        rects_1 = ax_2.bar(x + 0.25 * width, own_auc, width*0.3, label = 'Own Auc', color = 'black')
-        rects_2 = ax_2.bar(x + 0.75 * width, MVTechAD_auc, width*0.3, label = 'MVTechAD Auc', color = 'grey')
+        rects_1 = ax_2.bar(x + 0.25 * width, own_auc, width*0.3, label = bar_labels_auc[0], color = 'black')
+        rects_2 = ax_2.bar(x + 0.75 * width, MVTechAD_auc, width*0.3, label = bar_labels_auc[1], color = 'grey')
         # rects5 = ax.bar(x + width, total_cpu, width, label='total')
         # rects3 = ax.bar(x, )
 
         # Add some text for labels, title and custom x-axis tick labels, etc.
-        ax.set_ylabel('elapsed time per sample [ms] (mean)')#, fontsize=8*font_scaler)
-        ax.set_title(title)#, fontsize=10*font_scaler)
-        ax_2.set_ylabel('Auccarcy')#, fontsize=8*font_scaler)
+        ax.set_ylabel(y_label_inference, **font)#, fontsize=8*font_scaler)
+        # print(ax.get_yticks())
+        y_ticks = ax.get_yticks()
+        if german:
+            y_ticks = [str(y).replace('.',',') for y in y_ticks]
+        ax.set_yticks(ax.get_yticks(), y_ticks , **font)#, fontsize=8*font_scaler)
+        ax.set_title(title, **font)#, fontsize=10*font_scaler)
+        ax_2.set_ylabel('AUROC [%]', **font)#, fontsize=8*font_scaler)
         ax_2.yaxis.set_major_formatter(mpl.ticker.PercentFormatter())
         ax_2.set_ylim([50,105])
-        ax.set_xticks(x, labels)
+        ax.set_xticks(x, labels, **font)
         # l1 = ax.legend()#loc='upper right')
         # l2 = ax_2.legend()#loc='upper left')
 
-        ax.bar_label(rects1, padding=3)#, fontsize=6*font_scaler)
+        ax.bar_label(rects1, padding=3, fmt=own_formatter_2f, **font)#, fontsize=6*font_scaler)
         # ax.bar_label(rects2, padding=3)
         # ax.bar_label(rects3, padding=3)
-        ax.bar_label(rects4, padding=3, fmt='%1.3f')#, fontsize=6*font_scaler)
-        ax_2.bar_label(rects_1, padding=3,fmt='%1.1f')#, fontsize=6*font_scaler)
-        ax_2.bar_label(rects_2, padding=3,fmt='%1.1f')#, fontsize=6*font_scaler)
-        ax_2.set_yticks([50,70,80,90,100]) # 60 excluded for legend
+        ax.bar_label(rects4, padding=3, fmt=own_formatter_2f, **font)#, fontsize=6*font_scaler)
+        ax_2.bar_label(rects_1, padding=3,fmt=own_formatter_1f, **font)#, fontsize=6*font_scaler)
+        ax_2.bar_label(rects_2, padding=3,fmt=own_formatter_1f, **font)#, fontsize=6*font_scaler)
+        ax_2.set_yticks([50,70,80,90,100],[50,70,80,90,100],**font) # 60 excluded for legend
         # ax_2.set
         
         handles_1, labels_1 = ax.get_legend_handles_labels()
@@ -320,31 +353,63 @@ def plot_results(labels, feature_extraction, embedding, search, calc_distances, 
         both_handles = handles_1 + handles_2
         both_labels = labels_1 + labels_2
         
-        ax.legend(both_handles, both_labels, loc='lower right', bbox_to_anchor=loc_legend, bbox_transform=ax_2.transAxes)#, fontsize=8*font_scaler)
+        ax.legend(both_handles, both_labels, loc='lower right', bbox_to_anchor=loc_legend, bbox_transform=ax_2.transAxes, prop='FreeSerif')#, **font)#, fontsize=8*font_scaler)
     else:
         rects_1 = ax.bar(x - 0.5*width, own_auc, width, label = 'Own Auc', color = 'black')
-        rects_2 = ax.bar(x + 0.5*width, MVTechAD_auc, width, label = 'MVTechAD Auc', color = 'grey')
-        ax.set_ylabel('Auccarcy')#, fontsize=8*font_scaler)
+        rects_2 = ax.bar(x + 0.5*width, MVTechAD_auc, width, label = 'MVTecAD Auc', color = 'grey')
+        ax.set_ylabel('AUROC')#, fontsize=8*font_scaler)
         ax.yaxis.set_major_formatter(mpl.ticker.PercentFormatter())
         ax.set_title(title)#, fontsize=10*font_scaler)
         ax.set_xticks(x, labels)
         ax.legend()
-        ax.bar_label(rects_1, padding=3,fmt='%1.1f')
-        ax.bar_label(rects_2, padding=3,fmt='%1.1f')
+        ax.bar_label(rects_1, padding=3,fmt=f'%1{delimiter}1f')
+        ax.bar_label(rects_2, padding=3,fmt=f'%1{delimiter}1f')
         ax.set_yticks([50,60,70,80,90,100])
     
     fig.tight_layout()    
     current_font_size = mpl.rcParams['font.size']
     mpl.rcParams.update({'font.size': current_font_size*font_scaler})
     
+    ax.axhline(100, linestyle='--', color='gray', alpha=0.5)
+    
     if save_fig:
         file_name = str(int(time.time())) + title.replace(' ', '_') + '_' + '.svg'
         if not os.path.exists(res_path):
             os.makedirs(res_path) 
         plt.savefig(os.path.join(res_path,'plots', file_name), bbox_inches = 'tight')
+        if True:
+
+            import tikzplotlib as tikz
+            fig = plt.gcf()
+            tikzplotlib_fix_ncols(fig)
+            # tikz.clean_figure()
+            tikz.save(os.path.join(res_path,'plots', file_name.replace('.svg', '.tex')))
         
     if show:
         plt.show()
+
+def tikzplotlib_fix_ncols(obj):
+    """
+    workaround for matplotlib 3.6 renamed legend's _ncol to _ncols, which breaks tikzplotlib
+    """
+    if hasattr(obj, "_ncols"):
+        obj._ncol = obj._ncols
+    for child in obj.get_children():
+        tikzplotlib_fix_ncols(child)
+
+def own_formatter_1f(x):
+    tmp = f'{x:1.1f}'
+    return tmp.replace('.',',')
+
+def own_formatter_2f(x):
+    tmp = f'{x:1.2f}'
+    return tmp.replace('.',',')
+
+def own_formatter_3f(x):
+    tmp = f'{x:1.3f}'
+    return tmp.replace('.',',')
+
+
 def extract_vals_for_plot(summary_df: pd.DataFrame):
     '''
     Takes pandas DataFrame and extracts values for plotting
