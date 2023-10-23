@@ -37,7 +37,7 @@ class TestContainer():
                 for k, cat in enumerate(cats):
                     model.category = cat
                     print('\n', f'Category {k+1} of {len(cats)}: ', cat, '\n')
-                    if cat == 'own' and not only_accuracy:
+                    if cat == 'leather' and not only_accuracy:
                         model.measure_inference = True
                         model.cuda_active_training = True if not only_cpu else False
                         model.cuda_active = False
@@ -167,4 +167,7 @@ def get_default_PatchCoreModel():
     model.reduce_via_entropy = False
     model.reduce_via_entropy_normed = False
     model.reduction_factor = 50 # only for reduce_via_std or reduce_via_entropy or reduce_via_entropy_normed
+    # measurement
+    model.number_of_reps = 3
+    model.warm_up_reps = 2
     return model

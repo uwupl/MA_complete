@@ -190,10 +190,14 @@ def get_summary_df(this_run_id: str, res_path: str, save_df = False):
             failed_runs.append(k)
             correction_number += 1
             continue
-        img_auc = np.float32(pd_summary.loc['img_auc_[%]'].values)
-        img_auc_mean = np.mean(img_auc)
-        img_auc_own = img_auc[-1]
-        img_auc_MVTechAD = np.mean(img_auc[:-1])
+        img_auc_col = dict(pd_summary.loc['img_auc_[%]'])
+        img_auc_mean = np.mean(np.float32(list(img_auc_col.values())))
+        
+        img_auc_own = np.float32(img_auc_col.pop('own'))
+        # img_auc = np.float32(pd_summary.loc['img_auc_[%]'].values)
+        img_auc_MVTechAD = np.mean(np.float32(list(img_auc_col.values())))
+        # img_auc_own = img_auc[-1]
+        # img_auc_MVTechAD = np.mean(img_auc[:-1])
         backbone_storage = np.max(np.float32(pd_summary.loc['backbone_storage_[MB]'].values))
         backbone_flops = np.max(np.float32(pd_summary.loc['backbone_mult_adds_[M]'].values))
         feature_extraction = np.max(np.float32(pd_summary.loc['feature_extraction_[ms]'].values))
@@ -370,8 +374,7 @@ def plot_results(labels, feature_extraction, embedding, search, calc_distances, 
     current_font_size = mpl.rcParams['font.size']
     mpl.rcParams.update({'font.size': current_font_size*font_scaler})
     
-    ax.axhline(100, linestyle='--', color='gray', alpha=0.5)
-    
+    # ax_2.axhline(100, linestyle='--', color='gray', alpha=0.2) let's do that in tikz
     if save_fig:
         file_name = str(int(time.time())) + title.replace(' ', '_') + '_' + '.svg'
         if not os.path.exists(res_path):
