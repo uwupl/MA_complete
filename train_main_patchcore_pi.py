@@ -1186,6 +1186,73 @@ class PatchCore(pl.LightningModule):
         '''
         calc score_patches from which image score and anomaly map can be derived.
         '''
+        # if not self.multiple_coresets[0] or self.coreset_sampling_ratio == 1.0:
+        #     if batch_size_1:
+        #         if self.faiss_quantized or self.faiss_standard:
+        #             score_patches, _ = self.index.search(embeddings , k=self.n_neighbors)
+        #         elif self.own_knn:
+        #             score_patches = self.knn(embeddings)[0].cpu().detach().numpy() # .cuda()
+        #         elif self.patchcore_score_patches:
+        #             # embeddings = np.asarray(embeddings)
+        #             idx = 0 if self.patchcore_scorer else 1
+        #             score_patches = self.anomaly_scorer.predict([embeddings])[idx]
+        #             if idx == 0:
+        #                 score_patches = self.patch_maker.unpatch_scores(score_patches, batchsize=1) # identity function if batch_size=1 ... currently not used
+        #         else:
+        #             score_patches, _ = self.nbrs.kneighbors(embeddings)
+                
+        #     else:
+        #         if self.patchcore_score_patches:
+        #             raise NotImplementedError('not implemented yet (batch_size > 1)')
+        #         elif self.faiss_quantized or self.faiss_standard:
+        #             score_patches = [self.index.search(element, k=self.n_neighbors)[0] for element in embeddings] # TODO
+        #         elif self.own_knn:
+        #             # if self.pooling_embedding:
+        #             # if not self.pooling_embedding:
+        #             score_patches_ = self.knn(embeddings)[0].cpu().detach().numpy()
+        #             # else:
+        #             #     score_patches_ = self.knn(torch.from_numpy(embeddings))[0].cpu().detach().numpy()
+        #         elif self.patchcore_score_patches:
+        #             raise NotImplementedError('not implemented yet (batch_size > 1)')
+        #         else:
+        #             score_patches = [self.nbrs.kneighbors(element) for element in embeddings]
+        #     # print('score_patches shape: ', score_patches.shape)
+        #     return score_patches
+        
+        # else:
+        #     if batch_size_1:
+        #         score_patches = []
+        #         for k in range(self.multiple_coresets[1]):
+        #             # t_0 = record_cpu()
+        #             if self.patchcore_score_patches:
+        #                 idx = 0 if self.patchcore_scorer else 1
+        #                 this_scorer = self.anomaly_scorer[k]
+        #                 # print('this_scorer: ', this_scorer)
+        #                 score_patches_ = this_scorer.predict([embeddings])[idx]
+        #                 # print()
+        #                 if idx == 0:
+        #                     score_patches_ = self.patch_maker.unpatch_scores(score_patches_, batchsize=1)
+        #             elif self.faiss_quantized or self.faiss_standard:
+        #                 # print(embeddings.shape)
+        #                 # print(type(embeddings))
+        #                 score_patches_, _ = self.index[k].search(embeddings, k=self.n_neighbors)
+        #             elif self.own_knn:
+        #                 # if not self.pooling_embedding:
+        #                 score_patches_ = self.knn[k](embeddings)[0].cpu().detach().numpy()
+        #                 # else:
+        #                     # score_patches_ = self.knn[k](torch.from_numpy(embeddings))[0].cpu().detach().numpy()
+        #             # elif self.patchcore_score_patches:
+        #             #     idx = 0 if self.patchcore_scorer else 1
+        #             #     score_patches_ = self.anomaly_scorer.predict([embeddings])[idx]
+        #             #     if idx == 0:
+        #             #         score_patches_ = self.patch_maker.unpatch_scores(score_patches_, batchsize=1) # identity function if batch_size=1 ... currently not used
+        #             #     # score_patches_ = self.patch_maker.unpatch_scores(score_patches_, batchsize=1) # identity function if batch_size=1 ... currently not used
+        #             # t_1 = record_cpu()
+        #             # print('time for one search: ', (t_1-t_0)*1000)
+        #             score_patches += [score_patches_]
+        #     else:
+        #         raise NotImplementedError('multiple coresets not implemented for batch_size > 1')
+        #     return score_patches
         if not self.multiple_coresets[0] or self.coreset_sampling_ratio == 1.0:
             if batch_size_1:
                 if self.faiss_quantized or self.faiss_standard:
@@ -1253,7 +1320,6 @@ class PatchCore(pl.LightningModule):
             else:
                 raise NotImplementedError('multiple coresets not implemented for batch_size > 1')
             return score_patches
-
     def calc_img_score(self, score_patches):
         '''
         calculates the image score based on score_patches
@@ -1263,6 +1329,7 @@ class PatchCore(pl.LightningModule):
             score = modified_kNN_score_calc(score_patches=score_patches.astype(np.float64), n_next_patches=self.n_next_patches)
         elif self.patchcore_scorer:
             score_patches = score_patches.reshape(*score_patches.shape[:2], -1)
+            # print(score_patches.shape)
             score = self.patch_maker.score(score_patches)[0]
 
         else:
@@ -1459,7 +1526,7 @@ if __name__ == '__main__':
     model.layers_needed = [2,3]
     model.layer_cut = True
     # score calc
-    model.adapted_score_calc = True
+    model.adapted_score_calc = False
     model.n_neighbors = 4
     model.n_next_patches = 16
     model.patchcore_scorer = False
@@ -1473,10 +1540,10 @@ if __name__ == '__main__':
     # subsampling
     model.coreset_sampling_method = 'patchcore_greedy_approx'#'k_center_greedy'#
     model.specific_number_of_examples = 1000
-    model.multiple_coresets = [False, 3]
+    model.multiple_coresets = [True, 3]
     # search
     model.own_knn = True
-    model.metric_id = 17
+    model.metric_id = 0
     model.faiss_standard = False
     model.patchcore_score_patches = False
     # pooling
@@ -1484,15 +1551,15 @@ if __name__ == '__main__':
     
     # general settings
     model.category = 'toothbrush'
-    model.adapt_feature = False
-    model.group_id = 'RN18_L2_non_q'
-    # shrinking_factor=0.3, std_factor=0.01, batch_size=32, num_workers=12, lr=0.0005, epochs=12, 
-    # model.feature_adaptor_dict = {'shrinking_factor': 0.3, 'std_factor': 0.01, 'batch_size': 32, 'num_workers': 12, 'lr': 0.0005, 'epochs': 6, 'use_cuda': True}#, 'weight_decay': 0.0001, 'momentum': 0.9, 'scheduler': 'step', 'step_size': 5, 'gamma': 0.1, 'milestones': [5, 10], 'warm_up_reps': 1, 'number_of_reps': 2, 'normalize': False, 'weight_by_entropy': True, 'reduce_via_entropy_normed': True, 'reduction_factor': 50, 'sigmoid_in_last_layer': False, 'need_for_own_last_layer': True, 'prune_output_layer': [True, None]}
-    model.measure_inference = True
-    model.warm_up_reps = 0
-    model.number_of_reps = 2
-    model.reduce_via_entropy_normed = True
-    model.reduction_factor = 5
+    # model.adapt_feature = False
+    # # model.group_id = 'RN18_L2_non_q'
+    # # shrinking_factor=0.3, std_factor=0.01, batch_size=32, num_workers=12, lr=0.0005, epochs=12, 
+    # # model.feature_adaptor_dict = {'shrinking_factor': 0.3, 'std_factor': 0.01, 'batch_size': 32, 'num_workers': 12, 'lr': 0.0005, 'epochs': 6, 'use_cuda': True}#, 'weight_decay': 0.0001, 'momentum': 0.9, 'scheduler': 'step', 'step_size': 5, 'gamma': 0.1, 'milestones': [5, 10], 'warm_up_reps': 1, 'number_of_reps': 2, 'normalize': False, 'weight_by_entropy': True, 'reduce_via_entropy_normed': True, 'reduction_factor': 50, 'sigmoid_in_last_layer': False, 'need_for_own_last_layer': True, 'prune_output_layer': [True, None]}
+    # model.measure_inference = True
+    # model.warm_up_reps = 0
+    # model.number_of_reps = 2
+    # model.reduce_via_entropy_normed = True
+    # model.reduction_factor = 5
     # model.normalize = False
     # model.weight_by_entropy = True
     

@@ -174,10 +174,189 @@ ist diese Suche mit \glqq FAISS\grqq{} (TODO --> ref und cite) implementiert. FA
 enorm beschleunigt und im Laufe dieses Kapitels nochmal genauer erläuert und analysiert wird.\\
 Insgesamt ist die Methode PatchCore zwar in ihrer Originalform eine ausgezeichnete Basis, aber für die Implementierung auf einem RaspberryPi 4B nur eingeschränkt geeignet.\
 Es werden im Folgenden zahlreiche Adaptionen vorgestellt und evaluiert, die das Ziel haben, die Laufzeit zu reduzieren und dabei möglichst viel der Genauigkeit zu erhalten.\ 
-% \input(tikz/test2new)
-\newpage
-\input{tikz/test2new}\\
-\input{tikz/test2new}
+\section{Testaufbau}\label{sec:Testaufbau}
+In diesem Abschnitt wird die Testumgebung vorgestellt, die für die Evaluation der PatchCore Methode verwendet wurde.\ 
+Dabei sind viele der hier aufgeführten Vorgehensweisen auf \ref{ch:EfficientAD} und \ref{ch:SimpleNet} übertragbar.\
+\subsection*{Hardware}\label{subsec:Hardware}
+Es stehen grundsätzlich zwei Testumgebungen zur Verfügung. Das Ziel ist es zwar, die Implementierung auf einem RaspberryPi 4B zu ermöglichen, \
+auf dem Weg dorthin, ist eine potentere Hardware aber notwendig. \\
+Die Entwicklungsgeschwindigkeit hängt zum einen auch von der Laufzeit der Trainingsphase ab, die auf einem RaspberryPi 4B sehr lange dauert. \
+Außerdem sind Ergebnisse, die auf der Desktop-Hardware erzeugt wurden, im Falle der Genauigkeit ganzheitlich übertragbar, nehmen, aber nur einen Bruchteil der Zeit in Anspruch.\
+So spielt die Hardware, auf der eine identische Methode ausgeführt wird, für die Instanzklassifiziergung keine Rolle.\
+Sind also lediglich die Instanzklassifiziergungsgenauigkeiten in einem Abschnitt von Relevanz, weil keine oder bekannte Unterschiede in der Laufzeit bestehen, kann auch auf eine \
+GPU zurückgegriffen werden.\\
+Laufzeitmessungen werden über weite Teile dieser Arbeit auf der Desktop-Hardware durchgeführt. Zwar sind nicht nur die reine Rechenleistung zwischen den Prozessoren der beiden Geräten \
+unterschiedlich, auch die CPU-Architektur (ARM vs. x86) spielt eine Rolle. Jedoch sind die Ergebnisse qualitativ übertragbar. Aufgrund der Vielzahl an Adaptionen, die im Laufe dieser Arbeit \
+getestet werden, wurde sich dazu entschlossen, die Laufzeitmessungen nur dann auf dem RaspberryPi 4B durchzuführen, wenn entweder große relative Abweichungen zu den Messungen auf der Desktop-Hardware \
+zu erwarten sind oder es sich um eine finale Konfiguration handelt.\\
+Im Folgenden werden einige relevante Informationen zum Desktop-System aufgeführt.\\
+\begin{itemize}
+    \item CPU: AMD Ryzen 5 5600X (6 Kerne, 12 Threads, @ 3,7 GHz)
+    \item RAM: 32 GB DDR4 @ 3200 MHz
+    \item GPU: Nvidia GeForce RTX 3060Ti (8 GB GDDR6)
+    \item OS: Ubuntu 23.10 (Linux, Kernel 6.2.0-generic)
+\end{itemize}  
+Detailierte Information zur Hardware des RaspberryPi finden sich in \ref{sec:RaspberryPi4B}.\\
+\subsection{Software}\label{subsec:Software}
+Wie in der Forschung weit verbreitet und auch in allen Veröffentlichungen, die in dieser Arbeit verwendet werden, wird die Programmiersprache \textbf{Python} verwendet.\
+Es kommt dabei die Version \textit{3.10} zum Einsatz.\\
+Ebenfalls der Konvention in der Forschung entsprechend, wird das \textbf{PyTorch} Framework in der Version \textit{2.0.1} verwendet.\
+PyTorch ist ein Open-Source-Framework für maschinelles Lernen, das von Facebooks AI Research Lab (FAIR) entwickelt wurde. Es hat aufgrund seiner Flexibilität, \ 
+seines dynamischen Berechnungsgraphen und seiner Benutzerfreundlichkeit in der Community für maschinelles Lernen und Deep Learning große Beliebtheit erlangt. \ 
+PyTorch bietet eine Python-basierte Schnittstelle für die Entwicklung neuronaler Netze und anderer Modelle für maschinelles Lernen. \
+kann mit PyTorch effizient abgebildet werden.\cite{pytorch}\\
+Die Nächste Nachbar Suche wird mit der Bibliothek \textbf{FAISS} durchgeführt. FAISS ist eine Bibliothek, die von Facebooks AI Research Lab (FAIR) entwickelt wurde. \
+Wie bereits im vorherigen Abschnitt erwähnt, wird die Nächste Nachbar Suche jedoch in den meisten Fällen mit der Bibliothek \textbf{FAISS} durchgeführt. \ 
+FAISS (Facebook AI Similarity Search) ist eine leistungsstarke Bibliothek, die ebenfalls vom KI-Forschungsteam von Facebook (FAIR) für die effiziente und \ 
+skalierbare Ähnlichkeitssuche und die Suche nach dem nächsten Nachbarn in großen Datensätzen entwickelt wurde. \
+FAISS wurde insbesondere für die Verarbeitung hochdimensionaler Daten entwickelt und eignet sich daher besonders \ 
+gut für Aufgaben, die Merkmalsvektoren beinhalten, wie z. B. Einbettungen aus Deep-Learning-Modellen. Es nutzt Techniken wie Indexstrukturen, Quantisierung \ 
+und GPU-Beschleunigung, um Suchvorgänge erheblich zu beschleunigen.\cite{faiss} \\
+Daneben werden bekannte Bibliotheken wie \textbf{numpy} oder \textbf{scikit-learn} verwendet. Zur besseren Organisation des Codes wird ein modularer Aufbau verwendet, \
+der durch das Framework \textbf{pytorch lightning} ermöglicht wird.\\
+\subsubsection*{Laufzeit- und AUROC-Messungen}
+Die Laufzeitmessungen werden mit dem Python-Modul \textbf{time} bzw. der Methode \textbf{perf\_counter()} durchgeführt.\
+Zunächst wird immer nur die Laufzeit für ein einzelnes Bild betrachtet. Erst im Anschluss wird mit dem Durchsatz (\glqq Throughput\grqq{}) die Laufzeit von einem Ensemble (Batch)
+an Bildern betrachtet (TODO --> Ref). \\
+Ein einzelnes Bild durchläuft, während einer Laufzeitmessung $3$ mal einen sogenannten \glqq Warm-Up\grqq{} Prozess, der im Wesentlichen dazu dient, \
+mögliche Overheads in Form von Initialisierungsprozessen, die im Hintergrund ablaufen, auszuschließe und zusätzliche, die Hardware in einen authentischen thermischen Zustand zu bringen.\
+Keiner dieser Prozesse geht in die Laufzeitmessung direkt ein. Diese folgt für jedes Bild einzeln, indem die Inferenz $5$ mal durchgeführt wird und die Laufzeiten gemittelt werden. \
+Es werden hierbei $5$ Zeitpunkte innerhalb des Prozesses mit \textit{perf\_counter()} festgestellt. Diese sind:\
+\begin{itemize}
+    \item \textbf{Start}: Der Zeitpunkt, an dem die Inferenz beginnt.
+    \item \textbf{Ende: Feature Extraktion}: Der Zeitpunkt, an dem die Feature Extraktion durch den Backbone abgeschlossen ist (\ref{subsec:ErzeugenDerPatchFeatures}).
+    \item \textbf{Ende: Einbettungsprozess}: Der Zeitpunkt, an dem die Patch Feature vorliegen (\ref{subsec:ErzeugenDerPatchFeatures}).
+    \item \textbf{Ende: Nächste Nachbar Suche}: Der Zeitpunkt, an dem die Nächse Nachbar Suche abgeschlossen ist.
+    \item \textbf{Ende: Anomalieprozess}: Der Zeitpunkt, an dem der Anomaliegrad berechnet wurde und der damit Prozess abgeschlossen ist (\ref{subsec:BestimmenDesAnomaliegradesPatchcore}). 
+\end{itemize}
+Aus den Differenzen dieser Zeitstempel lassen sich dann präzise die Laufzeiten für die einzelnen Prozesse und den Gesamtprozess bestimmen. Da es jedoch zu Schwankungen in der Laufzeit \
+kommt, ist eine Mittelwertbildung notwendig. Dies geschieht in zweifacher Hinsicht. Zunächst wird für jedes Bild über die $5$ Durchläufe gemittelt. \
+Das wird für jedes Bild wiederholt, sodass für jedes Bild eine Laufzeit vorliegt. Aus diesen Laufzeiten wird dann ebenfalls der Mittelwert gebildet, der als eigentlicher Messwert für eine \
+Konfiguration dient.\\
+Anzumerken ist, dass in dieser Arbeit, wie bereits in \ref{sec:AUROC} erläutert, auf eine Segmentierung verzichtet wird. Dementsprechend wird dieser Prozess, soweit nicht für die \
+Instanzklassifiziergung notwendig, übersprungen und insbesondere nicht laufzeittechnisch erfasst.\\
+Ebenfalls wird der Initialisierungsprozess bzw. die Trainingsphase nur in exemplarischen Fällen betrachtet. Der Initialisierungsprozess ist einmalig und kann auch somit auch auf potenter Hardware \
+durchgeführt werden. In einer produktiven Umgebung ist dieser Trainingsprozess ohnehin nicht relevant, weil bereits abgeschlossen.\\
+Wie in (TODO --> ref) zu sehen, hängt die Laufzeit, genauer gesagt, die NN-Suche, stark von der Kardinalität von der Memory Bank $\mathcal{M}$ ab. In der Literatur allgemein üblich ist, \
+dass ein relatives Subsampling stattfindet. Wie wir \ref{tab:mvtecad_overview} entnehmen können, hat jede Kategorie unterschiedlich viele Bilder im Trainingsdatensatz und teilweise verschiedene\
+Auflösungen, wodurch sich eine unterschiedliche absolute Anzahl an Patch Featuren ergeben. Um die Laufzeitmessungen vergleichbar zu machen, wird die Kardinalität der Memory Bank \
+in den meisten Fällen auf $\num{1000}$ gesetzt, wenn nicht anders angegeben. Dies dient vor allem dazu, die Laufzeitmessungen für alle Klassen gleichermaßen geltend zu machen.\
+In diesem Sinne werden auch die Auflösungen der Bilder auf $256\times 256$ Pixel gesetzt, was dem Vorgehen der meisten Veröffentlichungen in diesem Bereich entspricht. Der Skalierungsprozess wird \
+dabei nicht als Teil der Laufzeit betrachtet. \\
+Dieser ermöglicht, dass die Laufzeitmessung für eine Konfiguration für eine Klasse ausreichend ist. Dies reduziert den Zeitaufwand für eine Messung einer Konfiguration über alle Klassen deutlich,\
+weil zum einen auf die Wiederholungen verzichtet werden kann, andererseits für die verbleibende Bestimmung der AUROC auch eine deutlich schneller arbeitende GPU verwendet werden kann.\\
+Wie bereits in \ref{sec:AUROC} ausgeführt, ist die AUROC eine ideale Metrik um die Güte eines Anomaliedetektors zu bewerten.\
+Hierzu werden zunächst für alle Bilder im Testdatensatz die Anomaliegrade berechnet. Auf Grundlage dieser Werte, wird dann die AUROC berechnet.\
+Wie in \ref{subsec:CoresetSubsampling} ausgeführt, wird bei der Berechnung der Elemente, die in die Memory-Bank übernommen werden, ein Algorithmus verwendet, der 
+randomisiert arbeitet. Um diesen zufälligen Einfluss zu minimieren, werden aus den identischen Patch Featuren $5$ Memory Banks $\mathcal{M}$ erzeugt, deren AUROC ebenfalls gemittelt wird,\
+um einen möglichst konsistenten Schätzer zu erhalten. Das geschieht für alle Klassen aus MVTecAD (\ref{sec:DatensatzMVTecAD}) und der Klasse des einigen Datensatzes (Granulat, \ref{sec:EigenerDatensatz}).\
+Während für den eigenen Datensatz der AUROC explizit angegeben wird, wird für die Klassen aus MVTecAD nur der Mittelwert über alle Klassen angegeben. Die einzelnen Ergebnisse sind aber archiviert und können \
+beim Autor erfragt werden.\\
+Die meisten der hier zu sehenden Plots wurden mit \textbf{tikz} und \textbf{matplotlib} direkt auf Grundlage der Messergebnisse erzeugt. Die Annotationen sind sinnvoll gerundet, um eine bessere \
+Lesbarkeit zu ermöglichen. \\
+Die Grundlage der Implementierung der Methode PatchCore liefert dabei die offizielle Implementierung \cite{patchcore} und eine inoffizielle Implementierung \cite{unofficialimplementation}. Diese wurden jedoch jeweils derart modifiziert, dass
+nur noch wenige Elemente der ursprünglichen Implementierung übrig geblieben sind. Der gesamte Code mit dem die folgenden Ergebnisse und Messungen erzeugt wurden, ist abrufbar.\
+\section{Adaptionen und Messergebnisse}\label{sec:Adaptionen}
+Der hier beginnende Abschnitt ist der umfangreichste dieser Arbeit. Er besteht als vielen Adaptionen, die im Laufe der Arbeit durchgeführt wurden, um die Laufzeit zu reduzieren.\
+Jeder Unterabschnitt beschäftigt sich damit mit einer Adaption oder einer Kombination von Adaptionen. \ 
+Zunächst wird dabei, die Idee hinter der Adaption erläutert. Messergebnisse werden dann präsentiert und diskutiert. Schließlich findet eine Einordnung und Bewertung statt.\
+\subsection{Originalmethode}
+Zunächst wird die Originalmethode ohne Adaption betrachtet. Es wird also die Methode PatchCore mit einem Wide ResNet-50 Backbone und einer Auflösung von $256\times 256$ Pixeln verwendet.\
+Die Laufzeitmessungen wurden mit der CPU des Desktop-PCs durchgeführt.\\
+In \ref{fig:patchcoreoriginal} ist die Laufzeit für die einzelnen Prozesse und den Gesamtprozess zu sehen, sowie die erreichte AUROC Klassifizierungsgenauigkeit.\
+Es lässt sich erkennen, dass die Angaben aus dem Paper sich verifizieren lassen. Es kann daraus abgeleitet werden, dass die im Rahmen dieser Arbeit erarbeitete Implementierung \
+korrekt ist.\\
+Eine schon besprochene Bemerkung kann ebenfalls abgelesen werden. Die von PatchCore verwendete Subsampling-Methode ist in der Lage, die Kardinalität der Memory Bank $\mathcal{M}$ \
+deutlich zu reduzieren, ohne die AUROC Klassifizierungsgenauigkeit zu stark zu beeinflussen. Eindeutig ist auch zu erkennen, dass diese Reduktion der Kardinalität \
+ein wesentlicher Bestandteil ist, möchte man eine möglichst geringe Laufzeit erreichen. Trotz Verwendung der State-of-the-Art Methoden, die von FAISS bereitgestellt werden, \
+ist die Nächste Nachbar Suche der laufzeitkritischste Prozess, wenn ein Subsampling $>10\%$ verwendet werden soll.\\
+Am Granulatdatensatz lässt sich sogar feststellen, dass zumindest in einzelnen Fällen, ein Subsampling der Instanzklassifiziergungsgenauigkeit sogar zuträglich sein kann.\
+Wie bereits ausgeführt, wird im Rahmen dieser Arbeit in den meisten Fällen kein relatives Subsampling durchgeführt, sondern eine absolute Kardinalität von $\num{1000}$ verwendet.\
+Für manche Klassen mit wenigen Trainingsbeispielen und geringerer Auflösung bedeutet das, es werden mehr Patch Feature in der Memory Bank sein, als bei einem relativen Subsampling mit $1\%$.\
+In den meisten Fällen läge die relative Subsamplingrate, die eine Kardinalität von $\num{1000}$ erzeugt, bei $<1\%$. Berechnet man den Mittelwert über alle Klassen, so ergibt sich eine \
+durchschnittliche relative Subsamplingrate von $\approx \num{0,6}\%$. Die erzeugten Ergebnisse entsprechen somit den Erwartungen und den Ergebnissen aus der Veröffentlichung.\\
+\begin{figure}[h]
+    \centering
+    \input{tikz/slide1edited}
+    \caption{PatchCore: Originalmethode mit unterschiedlicher Anzahl an Patch Featuren in Memory Bank.}
+    \label{fig:patchcoreoriginal}
+\end{figure}
+Der in der Originalmethode verwendete Einbettungsprozess, der in \ref{subsec:ErzeugenDerPatchFeatures} beschrieben ist, bietet einen Parameter $d$, der die Länge der Patch Features bestimmt.\
+In der \ref{fig:patchcoreoriginal} wurde keine Dimensionsreduktion durchgeführt, indem $d$ der Länge der aus Layer3 ($j=3$) extrahierten Feature entspricht, nämlich $1024$.\
+Mithilfe eines kleineren Parameters $d$ kann die Laufzeit weiter reduziert werden. In \ref{fig:patchcoreoriginal} ist die Laufzeit für unterschiedliche Werte von $d$ und zwei verschiedenen \ 
+Methoden zur Bestimmung der Nächsten Nachbarn und den korrespondierenden Distanzen zu sehen. Diese Abbildung inkludiert bei (1) und (4) Einbettungsmethoden, die nicht in der Originalmethode \ 
+vorgeschlagen worden sind und in Abschnitt (TODO --> ref) erläutert werden.\
+An dieser Stelle ist wichtig, dass die Merkmalslänge dadurch nochmal größer ausfällt ($d=1536$) als bei der Originalmethde und dem größten sinvollen Wert für $d=1024$. \
+Anhand von \ref{fig:patchcorecdist} können zweierlei Phänomene erkannt werden.\\
+\begin{figure}[h]
+    \centering
+    \input{tikz/slide2edited}
+    \caption{FAISS im Vergleich mit SciPy's cdist und unterschiedlichen Merkmalslängen $d$.}
+    \label{fig:patchcorecdist}
+\end{figure}
+Zum einen ist die in der Veröffentlichung verwendete Methode zur Bestimmung der Nächsten Nachbarn, die auf FAISS basiert, deutlich schneller als das Berechnen der Distanzen mit \
+SciPy's Funktion cdist\cite{cdist}. Dabei ist diese Methode, wie der Name bereits nahelegt, in der Programmiersprache C implementiert und kann somit als sehr performant angesehen werden.\
+Es wird allerdings zu jedem Patch Feature in $\mathcal{P}\left(x_{i}\right)$ die Distanz zu jedem Patch Feature in $\mathcal{M}$ explizit berechnet. \
+FAISS beschleunigt diesen Ansatz enorm durch Methoden wie Quantisierung und Indexstrukturen. Für eine genauere Erläuterung der Funktionsweise von FAISS wird auf \cite{faiss} verwiesen.\
+Der positive Effekt durch FAISS auf die Laufzeit steigt naheliegenderweise mit der Länge der Patch Features, ist aber auch bei $d=384$ schon deutlich zu erkennen.\\
+Das zweite Phänomen, das hier kurz besprochen werden soll, ist, dass FAISS deutlich weniger unter dem als \glqq Curse of Dimensionality\grqq{} (\textit{dt.:} Fluch der Dimensionalität) bezeichneten \
+Problem leidet. Der Fluch der Dimensionalität bezieht sich auf das Phänomen, dass der euklidische Abstand zwischen Punkten in einem hochdimensionalen Raum mit zunehmender Anzahl von \ 
+Dimensionen an Aussagekraft verliert, so dass es schwierig wird, die Ähnlichkeit oder den Abstand zwischen Punkten genau zu messen.(TODO --> find ref)\
+Durch Quantisierung bzw. aufteilen in kleinere Vektoren, die dann in Indexstrukturen abgelegt werden, kann FAISS dieses Problem umgehen. Es lässt sich in \ref{fig:patchcorecdist} erkennen, \
+dass, je größer $d$ ist, dieser negative Effekt immer stärker sich in der Genauigkeit der Instanzklassifiziergung niederschlägt. So kommen die beiden Suchverfahren bei $d=384$ noch auf \
+recht ähnliche Ergenisse ((2) und (3)), während bei $d=1536$ ((1) und (4)) die Instanzklassifiziergungsgenauigkeit bei der Verwendung von cdist deutlich schlechter ist als bei der Verwendung von FAISS.\\
+Es lässt sich also festhalten, dass die Verwendung von FAISS essentiell ist, einerseits um eine präzise Anomaliedetektion auch mit hochdimensionalen Merkmalsvektoren zu ermöglichen, \
+andererseits um die Laufzeit zu reduzieren.\\
+\subsection{Feature Extraktor - Wahl des Backbones}
+Es konnte bereits in \ref{fig:patchcorecdist} anhand von (5 - default) erkannt werden, dass die Feature Extraktion, also der \glqq forward pass\grqq{} durch den Backbone, \
+einen Großteil der Laufzeit für sich in Anspruch nimmt. Naheliegend ist deshalb hier anzusetzten. \
+Es steht eine sehr große Auswahl an möglichen Architekturen zur Auswahl. EfficientNets \cite{efficientnet} und DenseNets \cite{densenet} wurden bereits im Zusammenhang mit PatchCore Ensemble erwähnt.\
+In vielen Veröffentlichung wurden Studien durchgeführt und festgestellt, dass insbesondere EfficientNets eine valide Wahl darstellen, aber gegenüber den hier in dieser Arbeit verwendeten Architekturen \
+keine signifikanten Vorteile bieten. Es wurde sich deshalb entschieden, ausschließlich mit bewährten ResNet Architekturen zu arbeiten und nur Architekturen, die aus anderen Gründen interessant sind, \
+im Rahmen dieser Arbeit quantitativ zu evaluieren. \\
+Die in jüngerer Vergangenheit im Bereich der Künstlichen Intelligenz sehr erfolgreich verwendeten %\glqq Transformer\grqq{} basierten Architekturen, wie DeiT %\cite{deit} %oder CaiT \cite{cait}, bieten \
+auch in der Unüberwachten Anomaliedetekion ein spannendes Potential. Die Methoden FastFlow \cite{fastflow} und CAINNFlow \cite{cainnflow} erfolgreich eingesetzt. In beiden Veröffentlichungen werden \
+neben diesen Transformer-Architekturen auch ResNet-Architekturen verwendet, die in ihrer Leistungsfähigkeit nicht signifikant schlechter abschneiden.\
+Da Transformer-Architekturen im Allgemeinen, insbesondere bei der Berechnung ohne GPU, deutlich laufzeitkritischer sind, als ResNets, wird in dieser Arbeit auch auf die Verwendung von Transformer-Architekturen \
+verzichtet. Zwar gibt es Bestrebungen, die Laufzeit von Transformer basierten Netzwerken zu reduzieren, die auch durchaus erfolgreich sind. Allerdings ist eine der schnellsten und kompaktesten Varianten \
+von Transformer basierten Netzwerken, die Architektur MobileViT \cite{mobilevit} immer noch deutlich langsamer als gängige CNN Architekturen (Tabelle 3 in \cite{mobilevit}).
+Im Folgenden werden dementsprechend vor allem ResNets behandelt. Es wird aber auch auf eine verhältnismäßig neue Architektur, die \glqq ConvNexts\grqq{}, eingegangen, weil diese in bislang noch keiner \
+dem Autor bekannten Veröffentlichung untersucht wurde. Außerdem werden leichtgewichtige Feature Extraktoren, die durch Wissens Distilation (TODO --> ref) erzeugt wurden, untersucht.\\
+Auch die Vielzahl an ResNet Varianten verlangt eine profunde Vorauswahl. In Frage kommen sämtliche Architekturen, die eine kürzere Laufzeit verpricht, \
+als die in der Originalmethode verwendete Architektur Wide ResNet-50.\
+Das sind, wie bereits in \ref{tab:resnet-comparison} zu sehen, ResNet 34 und ResNet 18. Außerdem erscheint das ResNet50 als ein sinnvoller Backbone.\
+\subsubsection{ResNet}
+In diesem ausführlichen Abschnitt werden die Architekturen ResNet 18, ResNet 34 und ResNet 50 untersucht.\
+Es wird außerdem untersucht, welche Kombination an Hierarchielevel $j$ sinnvoll sind.\
+Abschließend findet eine Bewertung statt mit dem Ziel, eine Variante auszuwählen, die als Grundlage für weitere \
+Untersucchungen dient. \
+\paragraph{ResNet 50}
+....
+\paragraph{ResNet 34}
+... 
+\paragraph{ResNet 18}
+...
+\paragraph{Patch Description Network (PDN) - Wissensdistillation mit Wide ResNet 101 und PatchCore Einbettung}
+Wie in \ref{ch:EfficientAD} noch zu sehen sein wird, kann über Wissensdistillation ein den spezifischen Anforderungen angepasster \
+alternativer Feature Exktraktor erzeugt werden. Ein Wide ResNet kombiniert mit dem Einbettungsprozess aus PatchCore generiert in hierbei \
+die Trainingsbeispiele, um den sogenannten Patch Description Network (PDN) zu trainieren.\\ 
+\begin{figure}[h]
+    \centering
+    \input{tikz/slidepdncomparisonedited}
+    \caption{PatchCore: ResNet 18, 34 und 50 mit unterschiedlichen Hierarchieleveln $j$.}
+    \label{fig:patchcoreresnet}
+\end{figure}
+% Es werden zahlreiche Bibliotheken verwendet, von denen im nachfolgenden einige besonders relevante aufgeführt werden.\\
+% \begin{itemize}
+%     \item \textbf{torch} (Version 2.0.1)\\
+%     \item numpy
+% \end{itemize}
+% \newpage
+% \input{tikz/test2newnew}\\
+% \input{tikz/test2new}
+% \input(tikz/test2new)   
+% \input(tikz/test2newnew)
+% \input{tikz/test2new}
 % \input(tikz/test2new)
 % This file was created with tikzplotlib v0.10.1.
 % \begin{tikzpicture}

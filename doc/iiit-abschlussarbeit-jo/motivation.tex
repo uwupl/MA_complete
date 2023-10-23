@@ -1,9 +1,25 @@
 % -*- TeX -*- -*- DE -*-
 
 \chapter{Motivation}\label{ch:Motivation}
+Hier kann viel aus Papern übernommen werden. Einige Industriebeispiele wären ganz cool. --> TODO Beispiele, die zitierfähig sind, finden.\\
+Wird aber wahrscheinlich eines der letzten Kapitel, die angegangen werden wird. Aktuell keine hohe Priorität (11. Oktober)\\
 \section{Anomaliedetektion in der Industrie}\label{sec:AnomaliedetektionIndustrie}
 Hier wird die Relevanz von Anomaliedetektion in der Industrie erläutert.\
+Wie bereits erklärt --> Industriebeispiele aus der "Echten Welt" --> Muen etc. fragen für Tips.\
 \section{Unüberwachte Anomaliedetektion}\label{sec:UnueberwachteAnomaliedetektion}
 Hier wird ausgeführt warum überwachte Methoden an ihre Grenzen stoßen und warum unüberwachte Methoden sinnvoll sind.\
-\section{Laufzeitoptimierung}\label{sec:Laufzeitoptimierung}
-Dann wird ausgeführt, warum eine Laufzeitoptimierung sinnvoll ist und warum es auch heute noch sinnvoll sein kann, auf teure GPUs zu verzichten.\
+Auch hierfür werden noch Quellen gesucht.\
+\section{Laufzeitoptimierung und Ressourcenbeschränktheit}\label{sec:Laufzeitoptimierung}
+Erster Abschnitt aus efficientad paper kann hier gut zitiert werden.\\
+\textit{Real-world anomaly detection applications frequently put constraints on the computational requirements of a method. \ 
+There are cases where detecting an anomaly too late can cause substantial economic damage, such as metal objects in a crop \ 
+field entering the interior of a combine harvester. In other cases, even human health is at risk, for example, if a limb of \ 
+a machine operator approaches a blade. Furthermore, industrial settings commonly involve strict runtime limits caused by high \ 
+production rates [4]. Not adhering to these limits would decrease the production rate of the respective application and thus \ 
+its economic via-bility. It is therefore essential to pay attention to the compu-tational and economic cost of anomaly detection \ 
+methods to keep them suitable for real-world applications.}
+Dann wird ausgeführt, warum eine Laufzeitoptimierung sinnvoll ist und warum es auch heute noch sinnvoll sein kann oder nicht ansders möglich ist, \ 
+als auf teure GPUs zu verzichten.\
+Beispiele für edge devices --> mobile Roboter, oder Drohnen, die autonom agieren sollen, aber nur begrenzte Ressourcen haben und vor allem \
+keine GPUs.\\
+Können wir hier den Bogen spannen zu Implementierung auf FPGAs? --> Muen fragen und recherchieren.
