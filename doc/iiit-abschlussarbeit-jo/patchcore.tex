@@ -326,16 +326,98 @@ Auch die Vielzahl an ResNet Varianten verlangt eine profunde Vorauswahl. In Frag
 als die in der Originalmethode verwendete Architektur Wide ResNet-50.\
 Das sind, wie bereits in \ref{tab:resnet-comparison} zu sehen, ResNet 34 und ResNet 18. Außerdem erscheint das ResNet50 als ein sinnvoller Backbone.\
 \subsubsection{ResNet}
-In diesem ausführlichen Abschnitt werden die Architekturen ResNet 18, ResNet 34 und ResNet 50 untersucht.\
+In diesem ausführlichen Abschnitt werden die Architekturen ResNet 18, ResNet 34 und ResNet 50 untersucht.\ (TODO --> RN50 inkludieren?)
 Es wird außerdem untersucht, welche Kombination an Hierarchielevel $j$ sinnvoll sind.\
-Abschließend findet eine Bewertung statt mit dem Ziel, eine Variante auszuwählen, die als Grundlage für weitere \
-Untersucchungen dient. \
-\paragraph{ResNet 50}
-....
-\paragraph{ResNet 34}
-... 
+Abschließend findet eine Bewertung statt mit dem Ziel, einige wenige Varianten auszuwählen, die als Grundlage für weitere \
+Untersuchungen dienen. \\
+Es sei an dieser Stelle angemerkt, dass, wie bereits in der Implementierung zu PatchCore vorgesehen, die Berechnung der Feature Maps immer nur bis zum größten $j$ durchgeführt wird. \
+Der \glqq forward pass\grqq{} wird also terminiert, wenn alle notwendigen Ausgaben erzeugt wurden. Da die Feature Maps frühere Schichten aufgrund der sequentiellen Struktur des Netzwerks \
+zuerst zur Verfügung stehen, ist die Laufzeit der Extraktion stark abhängig von dem größten Hierarchielevel $j$.\\
 \paragraph{ResNet 18}
-...
+Es ist naheliegend einen möglichst leichten Feature Extraktor zu verwenden, um die Laufzeit zu verringern.\ 
+Wie bereits in \ref{tab:resnet-comparison} zu sehen, ist ResNet 18 die leichteste Architektur, die in Frage kommt und somit der erste Kandidat. \
+Betrachtet man zunächst jede Hierarchieebene für sich, ergibt sich \ref{fig:patchcoreresnet18single}.\
+Es lässt sich leicht erkennen, dass $j=\{4\}$ aus zweierlei Perspektive nicht geeignet ist. Zum einen ist die Laufzeit für die Feature Extraktion im Verhätnis \
+zu den anderen Hierarchieleveln sehr hoch. Zum anderen ist die AUROC Klassifizierungsgenauigkeit deutlich schlechter als bei den anderen Hierarchieleveln.\\
+Die nächst beste Hierarchieebene ist $j=\{1\}$. Es zeigt sich die niedrigste Laufzeit in diesem Feld von lediglich $\num{7,25}\si{\milli\second}$ je Bild auf der Desktop-CPU.\
+Das ist zwar fast doppelt so schnell, wie mit $j=\{4\}$, aber die NN-Suche benötigt deutlich mehr Zeit, als bei den anderen Varianten. \
+Das erscheint zunächst kontraintuitiv, weil die Merkmalslänge hier mit $d=64$ am geringsten ist.\
+Betrachtet man \ref{fig:ResNetPyramid} wird aber klar, dass durch die hohe räumliche Auflösung der Feature Map an Stelle $j=1$ die Anzahl an Patch Featuren, \ 
+die für ein Testbild mit der Memory Bank verglichen werden, deutlich größer ist. Aufgrund der Halbierung der Seitenlänge pro Hierarchielevel ist die Anzahl an \
+elementweisen Distanzberechnungen für jedes $j=j+1$ doppelt so groß, was sich auch in etwa in einer Verdoppelung der benötigten Laufzeit für die NN-Suche niederschlägt. \
+Dies gilt analog auch für das ResNet 34 und ResNet 50. Zwar hat das ResNet 50 für jeden Kanal die 4-fache Merkmalslänge, die Verhältnisse zwischen den Hierarchieleveln bleiben aber \
+erhalten. \\
+Für den eigenen Datensatz ist $j=\{3\}$ die beste Wahl, betrachtet man nur einzelne Hierarchielevel. Mit absolut $\num{0,9}\%$ schlechterer AUROC auf dem Granulat Datensatz, \
+aber mit $\num{97,0}\%$ auf MVTecAD deutlich präziser, ist $j=\{2\}$ hier aber die insgesamt beste Wahl, die auch mit einer kurzen Laufzeit von $\num{8,47}\si{\milli\second}$ \
+überzeugt.\\
+\begin{figure}[h]
+    \centering
+    \input{tikz/slidern18singleedited}
+    \caption{ResNet 18: Einzelne Hierarchielevel im Vergleich.}
+    \label{fig:patchcoreresnet18single}
+\end{figure}
+Wie bereits in der Erläuterung von PatchCore gelernt, kann eine Aggregation verschiedener Hierarchielevel die Instanzklassifizierungsgenauigkeit verbessern.\
+Dass dies auch tatsächlich der Fall ist, zeigen $j=\{1,2,3\}$ und, die auch in PatchCore verwendeten Hierarchieebenen $j=\{2,3\}$ in \ref{fig:patchcoreresnet18combi}.\
+Es kann aber nicht pauschal davon gesprochen werden, dass eine Aggregation immer zu einer Verbesserung führt. Wir sehen, dass $j=\{1,2\}$ eine deutlich schlechtere \ 
+Instanzklassifiziergungsgenauigkeit aufweist, als $j=\{2\}$ alleine.\\
+Ebenfalls gilt es zu beachten, dass der Einbettungsprozess und die NN-Suche in aller Regel mehr Zeit in Anspruch nimmt, verwendet man eine Kombination verschiedener Hierarchielevel.\
+\begin{figure}[h]
+    \centering
+    \input{tikz/slidern18combiedited}
+    \caption{ResNet 18: Verschiedene Kombinationen an Hierarchieleveln im Vergleich exklusive Layer 4.}
+    \label{fig:patchcoreresnet18combi}
+\end{figure}
+Einmalig betrachten wir in \ref{fig:patchcoreresnet18combi2} die Verwendung von Kombinationen, die $j=4$ beinhalten.\
+Wie bereits in \ref{fig:patchcoreresnet18single} zu sehen, ist $j=4$ alleine nicht geeignet. Der AUROC kann durch Hinzunahme weiterer Hierarchielevel lediglich \
+marginal verbessert werden. Dies geht einher mit einer erheblichen Laufzeitsteigerung. Wie in PatchCore bereits vermutet, sind die Feature, die aus Layer 4 extrahiert werden, \
+nicht geeignet, um eine präzise Instanzklassifizierung zu ermöglichen, weil sie einen zu hohen Bias hin zur Klassifikationsaufgabe der Objekterkennung aus ImageNet aufweisen. \
+Wie noch zu sehen sein wird, verhalten sich die verschiedenen Hierarchielevel analog im Hinblick auf Laufzeit und Genauigkeit für alternative Netze.\ 
+Im Folgenden wird dementsprechend auf die Verwendung von $j=4$ verzichtet.\\
+\begin{figure}[h]
+    \centering
+    \input{tikz/slidern18combi2edited}
+    \caption{ResNet 18: Verschiedene Kombinationen an Hierarchieleveln im Vergleich inklusive Layer 4.}
+    \label{fig:patchcoreresnet18combi2}
+\end{figure}
+\paragraph{ResNet 34}
+Der nächst größere Kandidat ist das ResNet 34. Analog zu ResNet 18 werden zunächst die einzelnen Hierarchielevel betrachtet.\\
+Es ergibt sich ein zum ResNet 18 sehr ähnliches Bild. Auch hier ist für $\j=\{2\}$ die höchste Instanzklassifiziergung festzustellen.\
+Danach folgt $j=\{3\}$ und $j=\{1\}$. Auch hier ist $j=\{4\}$ aufgrund von Laufzeit und Instanzklassifiziergungsgenauigkeit nicht geeignet.\
+Auch die AUROC Werte liegen auf ähnlichem Niveau. Wie zu erwarten ist, sind die Laufzeiten für die Feature Exktraktion höher, als bei ResNet 18.\
+Es gilt aber auch, dass in allen Fällen die Instanzklassifiziergungsgenauigkeit für MVTecAD leicht zunimmt. \
+Am Ende dieses Abschnittes wird sich eingehender mit dem Vergleich zwischen verschiedenen Backbones beschäftigt. \
+\begin{figure}[h]
+    \centering
+    \input{tikz/slidern34singleedited}
+    \caption{ResNet 34: Einzelne Hierarchielevel im Vergleich.}
+    \label{fig:patchcoreresnet34single}
+\end{figure}
+Auch für die Aggregation verschiedener Hierarchielevel $j$ sind große Parallelen zum bereits besprochenen Fall mit dem ResNet 18 zu erkennen. \
+Ein wesentlicher Unterschied kann aber in der Verbesserung der AUROC Werte bei Verwendung von mehreren Elementen füür $j$ festgestellt werden.\
+Zwar kann im Falle von $j=\{2,3\}$ eine leichte Steigerung des AUROC festgestellt werden, diese ist aber mit einer absoluten Differenz vin $\num{0,2}\%$ auf MVTEcAD sehr gering \
+und geht mit einer fas Verdoppelung der Laufzeit einher. \ Für den Fall $j=\{1,2,3\}$ ist eine deutliche Verbesserung lediglich  festzustellen.\
+\begin{figure}[h]
+    \centering
+    \input{tikz/slidern34combiedited}
+    \caption{ResNet 34: Verschiedene Kombinationen an Hierarchieleveln im Vergleich.}
+    \label{fig:patchcoreresnet34combi}
+\end{figure}
+% \paragraph{ResNet 50}
+% \begin{figure}[h]
+%     \centering
+%     \input{tikz/slidern50singleedited}
+%     \caption{ResNet 50: Einzelne Hierarchielevel im Vergleich.}
+%     \label{fig:patchcoreresnet50single}
+% \end{figure}
+% \begin{figure}[h]
+%     \centering
+%     \input{tikz/slidern50combiedited}
+%     \caption{ResNet 50: Verschiedene Kombinationen an Hierarchieleveln im Vergleich.}
+%     \label{fig:patchcoreresnet50combi}
+% \end{figure}
+
+\
+\newpage
 \paragraph{Patch Description Network (PDN) - Wissensdistillation mit Wide ResNet 101 und PatchCore Einbettung}
 Wie in \ref{ch:EfficientAD} noch zu sehen sein wird, kann über Wissensdistillation ein den spezifischen Anforderungen angepasster \
 alternativer Feature Exktraktor erzeugt werden. Ein Wide ResNet kombiniert mit dem Einbettungsprozess aus PatchCore generiert in hierbei \
@@ -343,8 +425,8 @@ die Trainingsbeispiele, um den sogenannten Patch Description Network (PDN) zu tr
 \begin{figure}[h]
     \centering
     \input{tikz/slidepdncomparisonedited}
-    \caption{PatchCore: ResNet 18, 34 und 50 mit unterschiedlichen Hierarchieleveln $j$.}
-    \label{fig:patchcoreresnet}
+    \caption{PDN als Feature Extraktor für PatchCore.}
+    \label{fig:patchcorepdn}
 \end{figure}
 % Es werden zahlreiche Bibliotheken verwendet, von denen im nachfolgenden einige besonders relevante aufgeführt werden.\\
 % \begin{itemize}

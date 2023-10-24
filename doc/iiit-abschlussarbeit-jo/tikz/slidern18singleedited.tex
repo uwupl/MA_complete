@@ -1,0 +1,215 @@
+% This file was created with tikzplotlib v0.10.1.
+\begin{tikzpicture}  
+  \newcommand{\widthplot}{0.8}
+  \newcommand{\heightplot}{0.52}
+  \newcommand{\anchorx}{1.1}
+
+
+\definecolor{crimson}{RGB}{220,20,60}
+\definecolor{darkgoldenrod}{RGB}{184,134,11}
+\definecolor{darkgray176}{RGB}{176,176,176}
+\definecolor{gray}{RGB}{128,128,128}
+\definecolor{lightgray204}{RGB}{204,204,204}
+\definecolor{purple}{RGB}{128,0,128}
+\definecolor{slateblue}{RGB}{106,90,205}
+
+\begin{axis}[  
+  width=\widthplot\textwidth,
+  height=\heightplot\textwidth,
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(\anchorx,0.00)},
+  anchor=south west,
+  text width=2.25cm
+},
+tick align=outside,
+tick pos=left,
+x grid style={darkgray176},
+xmin=-0.588, xmax=3.548,
+xtick style={color=black},
+xtick={0,1,2,3},
+xticklabels={
+  {Layer 4}, {Layer 1}, {Layer 3}, {Layer 2}
+  },
+  % \\  [4]\\512 Merkmalslaenge,\\  [1]\\64 Merkmalslaenge,\\  [3]\\256 Merkmalslaenge,\\  [2]\\128 Merkmalslaenge}
+  % },
+xticklabel style={align=center},y grid style={darkgray176},
+ylabel={(Lauf-) Zeit [ms]},
+ymin=0, ymax=16,
+ytick style={color=black},
+ytick={0,2,4,6,8,10,12,14,16},
+yticklabels={{0,0},{2,0},{4,0},{6,0},{8,0},{10,0},{12,0},{14,0},{16,0}}
+]
+\draw[draw=none,fill=crimson] (axis cs:-0.4,0) rectangle (axis cs:0,13.4928455352783);
+\addlegendimage{ybar,ybar legend,draw=none,fill=crimson}
+\addlegendentry{Extraktion}
+
+\draw[draw=none,fill=crimson] (axis cs:0.6,0) rectangle (axis cs:1,4.56108283996582);
+\draw[draw=none,fill=crimson] (axis cs:1.6,0) rectangle (axis cs:2,9.96148777008057);
+\draw[draw=none,fill=crimson] (axis cs:2.6,0) rectangle (axis cs:3,7.16265773773193);
+\draw[draw=none,fill=purple] (axis cs:-0.4,13.4928455352783) rectangle (axis cs:0,13.6533096432686);
+\addlegendimage{ybar,ybar legend,draw=none,fill=purple}
+\addlegendentry{Einbettung}
+
+\draw[draw=none,fill=purple] (axis cs:0.6,4.56108283996582) rectangle (axis cs:1,5.23783081769943);
+\draw[draw=none,fill=purple] (axis cs:1.6,9.96148777008057) rectangle (axis cs:2,10.1991844326258);
+\draw[draw=none,fill=purple] (axis cs:2.6,7.16265773773193) rectangle (axis cs:3,7.57438486814499);
+\draw[draw=none,fill=slateblue] (axis cs:-0.4,13.6533096432686) rectangle (axis cs:0,13.9608818292618);
+\addlegendimage{ybar,ybar legend,draw=none,fill=slateblue}
+\addlegendentry{NN-Suche}
+
+\draw[draw=none,fill=slateblue] (axis cs:0.6,5.23783081769943) rectangle (axis cs:1,7.22755926847458);
+\draw[draw=none,fill=slateblue] (axis cs:1.6,10.1991844326258) rectangle (axis cs:2,10.658128336072);
+\draw[draw=none,fill=slateblue] (axis cs:2.6,7.57438486814499) rectangle (axis cs:3,8.45180809497833);
+\draw[draw=none,fill=darkgoldenrod] (axis cs:-0.4,13.9608818292618) rectangle (axis cs:0,13.9812744855881);
+\addlegendimage{ybar,ybar legend,draw=none,fill=darkgoldenrod}
+\addlegendentry{Anomaliegrad}
+
+\draw[draw=none,fill=darkgoldenrod] (axis cs:0.6,7.22755926847458) rectangle (axis cs:1,7.25398576445878);
+\draw[draw=none,fill=darkgoldenrod] (axis cs:1.6,10.658128336072) rectangle (axis cs:2,10.6784496884793);
+\draw[draw=none,fill=darkgoldenrod] (axis cs:2.6,8.45180809497833) rectangle (axis cs:3,8.47350986674428);
+% \draw (axis cs:-0.2,13.4928455352783) ++(0pt,-2pt) node[
+%   scale=1.0,
+%   anchor=south,
+%   text=black,
+%   rotate=0.0
+% ]{13,49};
+% \draw (axis cs:0.8,4.56108283996582) ++(0pt,-2pt) node[
+%   scale=1.0,
+%   anchor=south,
+%   text=black,
+%   rotate=0.0
+% ]{4,56};
+% \draw (axis cs:1.8,9.96148777008057) ++(0pt,-2pt) node[
+%   scale=1.0,
+%   anchor=south,
+%   text=black,
+%   rotate=0.0
+% ]{9,96};
+% \draw (axis cs:2.8,7.16265773773193) ++(0pt,-2pt) node[
+%   scale=1.0,
+%   anchor=south,
+%   text=black,
+%   rotate=0.0
+% ]{7,16};
+\draw (axis cs:-0.2,13.9812744855881) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{13,98};
+\draw (axis cs:0.8,7.25398576445878) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{7,25};
+\draw (axis cs:1.8,10.6784496884793) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{10,68};
+\draw (axis cs:2.8,8.47350986674428) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{8,47};
+\end{axis}
+
+\begin{axis}[  
+  width=\widthplot\textwidth,
+  height=\heightplot\textwidth,
+axis y line=right,
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(\anchorx,1.00)},
+  anchor=north west,
+  text width=2.25cm},
+tick align=outside,
+x grid style={darkgray176},
+xmin=-0.588, xmax=3.548,
+xtick pos=left,
+xtick style={color=black},
+xtick={0,1,2,3},
+xticklabels={},
+y grid style={darkgray176},
+ylabel={AUROC [\%]},
+ymin=50, ymax=105,
+ytick pos=right,
+ytick style={color=black},
+yticklabel style={anchor=west}
+]
+\draw[draw=none,fill=black] (axis cs:0.04,0) rectangle (axis cs:0.16,85.4961693286896);
+\addlegendimage{ybar,ybar legend,draw=none,fill=black}
+\addlegendentry{Granulat}
+
+\draw[draw=none,fill=black] (axis cs:1.04,0) rectangle (axis cs:1.16,92.0555531978607);
+\draw[draw=none,fill=black] (axis cs:2.04,0) rectangle (axis cs:2.16,94.8793113231659);
+\draw[draw=none,fill=black] (axis cs:3.04,0) rectangle (axis cs:3.16,93.990421295166);
+\draw[draw=none,fill=gray] (axis cs:0.24,0) rectangle (axis cs:0.36,87.6954257488251);
+\addlegendimage{ybar,ybar legend,draw=none,fill=gray}
+\addlegendentry{MVTecAD}
+
+\draw[draw=none,fill=gray] (axis cs:1.24,0) rectangle (axis cs:1.36,92.4968600273132);
+\draw[draw=none,fill=gray] (axis cs:2.24,0) rectangle (axis cs:2.36,95.1098620891571);
+\draw[draw=none,fill=gray] (axis cs:3.24,0) rectangle (axis cs:3.36,96.9862401485443);
+\draw (axis cs:0.1,85.4961693286896) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{85,5};
+\draw (axis cs:1.1,92.0555531978607) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{92,1};
+\draw (axis cs:2.1,94.8793113231659) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{94,9};
+\draw (axis cs:3.1,93.990421295166) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{94,0};
+\draw (axis cs:0.3,87.6954257488251) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{87,7};
+\draw (axis cs:1.3,92.4968600273132) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{92,5};
+\draw (axis cs:2.3,95.1098620891571) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{95,1};
+\draw (axis cs:3.3,96.9862401485443) ++(0pt,-2pt) node[
+  scale=1.0,
+  anchor=south,
+  text=black,
+  rotate=0.0
+]{97,0};
+
+\draw[black, dashed] (axis cs:-1,100) -- (axis cs:5,100);\end{axis}
+
+\end{tikzpicture}
