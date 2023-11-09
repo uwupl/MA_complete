@@ -16,10 +16,10 @@ if __name__ == '__main__':
     import sys
     sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
     # from path_definitions import MVTEC_DIR
-    from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
+    from common import get_autoencoder, get_pdn_small, get_pdn_medium, get_pdn_own_2, get_pdn_own, get_autoencoder_own,\
         ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 else:
-    from .common import get_autoencoder, get_pdn_small, get_pdn_medium, \
+    from .common import get_autoencoder, get_pdn_small, get_pdn_medium, get_pdn_own, get_pdn_own_2, get_autoencoder_own,\
         ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 
 # constants
@@ -70,15 +70,24 @@ def main():
     elif config.model_size == 'medium':
         teacher = get_pdn_medium(out_channels)
         student = get_pdn_medium(2 * out_channels)
+    elif config.model_size == 'own':
+        teacher = get_pdn_own(config.out_channels)
+        student = get_pdn_own(2 * config.out_channels)
+    elif config.model_size == 'own_2':
+        teacher = get_pdn_own_2(config.out_channels)
+        student = get_pdn_own_2(2 * config.out_channels)
     else:
         raise Exception('Unknown config.model_size')
     
-    autoencoder = get_autoencoder(out_channels)
+    if not (config.model_size == 'own' or config.model_size == 'own_2'):
+        autoencoder = get_autoencoder(config.out_channels)
+    else:
+        autoencoder = get_autoencoder_own(config.out_channels)
     
     # teacher, student, autoencoder = quantize_model(teacher, student, autoencoder, calibration_loader=None)
     
     # load weights
-    phase = 'final' # or 'final'
+    phase = 'final_50000' # or 'final'
 
     teacher = torch.load(os.path.join(model_dir, f'teacher_{phase}.pth'), map_location=torch.device('cpu'))
     student = torch.load(os.path.join(model_dir, f'student_{phase}.pth'), map_location=torch.device('cpu'))
@@ -176,7 +185,7 @@ def main():
     
     # save runtimes as json
     import json
-    with open(os.path.join(config.output_dir, f'runtime_{phase}.json'), 'w') as f:
+    with open(os.path.join(config.output_dir, f'runtime_{phase}_{config.run_id}.json'), 'w') as f:
         json.dump({'teacher_inference': teacher_inference*1e3,
                    'teacher_inference_q': teacher_inference_q*1e3,
                    'student_inference': student_inference*1e3,

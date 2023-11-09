@@ -281,74 +281,145 @@ Im nachfolgenden Abschnitt wird die darauf aufbauende Methode \glqq SPADE\grqq{}
 % \section{Autoencoder}\label{sec:Autoencoder}
 % Hier kommt dann eine relativ generische Erläuterung von Autoencodern. \
 % Gefolgt von Autoencoder für Anomaliedetektion. \
+\section{Quantisierung von CNNs}\label{sec:Quantisierung}
+In dieser Arbeit wird an vielen Stellen zu sehen sein, dass die Inferenz eines Convolutional Neural Networks (CNN) von enormer Bedeutung ist. \
+Die Inferenzzeit dieser Netze zu verkürzen, ohne dabei die Genauigkeit zu stark zu beeinträchtigen, ist ein Hauptmotiv vieler Adaptionen, die in dieser Arbeit diskutiert werden.\
+Eine sehr effektives Werkzeug ist das sogenannte Quantisieren dieser Netze. \ 
+Im Folgenden wird das Prinzip dahinter erläutert und gezeigt, wie sich die Inferenzzeit von CNNs durch Quantisierung reduzieren lässt. \
+\subsection{Grundlagen der Quantisierung}\label{subsec:GrundlagenDerQuantisierung}
+Im Wesentlichen ist die Quantisierung nichts anderes, als die Reduzierung der numerischen Präzision. \
+In Fällen, in denen diese Präzision nicht von großer Bedeutung ist, kann durch eine Quantisierung eine enorme Komprimierung der Information erreicht werden. \
+So wird man, gefragt nach der Uhrzeit, nicht mit der Uhrzeit in Sekunden antworten, selbst wenn jemandem diese Information zur Verfügung stünde, sondern großzügig auf \
+5 Minuten runden. Eine noch genauere Uhrzeit bringt dem Fragenden kein Mehrwert und würde die Antwort nur schwerer verständlich machen. \
+Das ist, sehr vereinfacht formuliert, das Prinzip der Quantisierung. Information wird bewusst reduziert, um die Komplexität zu reduzieren. \\
+\subsubsection{Abbildungsfunktion}
+Es wird zunächst eine Abbildungsfunktion benötigt, die Gleitkommazahlen, konkret \glqq floating point\grqq{}-Zahlen in $32 bit$ aufgelöst, auf ganze Zahlen, also \glqq Integer\grqq{} abbildet. \
+Diese Integer haben eine Länge von $8 bit$ ($n=8$), also $1 Byte$. Es sind aber auch andere Zahlenwerte hier denkbar. \\
+In der Regel ist eine solche Abbildungsfunktion $Q$ eine lineare Transformation der Form:
+$$
+\mathcal{Q}(x) =\left\lfloor \frac{x}{S} + Z + \frac{1}{2} \right\rfloor
+$$
+$x$ bezeichnet dabei den Eingangswert als Gleitkommazahl, $S$ die Skalierung, $Z$ den Nullpunkt und $\mathcal{Q}(x)=x_{q}\in \mathbb{N}$ schließlich der korresponierende qunatisierte Wert zu $x\in\mathbb{R}$. \
+Die Quantisierungsparameter $S$ und $Z$ müssen passend gewählt werden, um eine sinnvolle Abbildung zu erzielen, wie im nächsten Abschnitt zu sehen sein wird. \\
+Um aus einer quantisierierten Ganzzahl wieder eine korresponierende Gleitkommazahl zu erhalten, wird die Umkehrung der Abbildungsfunktion verwendet:
+$$
+\tilde{x} = \mathcal{Q}^{-1}(x_{q}) = S \cdot (x_{q} - Z)
+$$
+Es sei angemerkt, dass im Allgemeinen $x \neq \tilde{r}$ gilt. Die Differenz $\rvert r - \tilde{r} \rvert$ wird als Quantisierungsfehler bezeichnet. \
+Der Quantisierungsfehler ist maximal $q/2$ mit $q=\frac{S}{2^{n}}$ als die Größe einer Quantisierungsstufe. \
+\subsubsection{Skalierung und Nullpunkt}\label{subsubsec:SkalierungUndNullpunkt}
+Der Skalierungsparameter $S$ entspricht dem Verhältnis zwischen dem Wertebereich der Gleitkommazahlen und dem Wertebereich der Ganzzahlen. \
+Ersteres lässt sich beispielsweise experimentell mithilfe eines Trainingsdatensatzes aus dem Minimum und Maximum der Eingangswerte $x$, also den Gleitkommazahlen, bestimmen. \
+Der Wertebereich der Ganzzahlen ist durch die Anzahl der Bits $n$, die zur Darstellung verwendet werden, gegeben. \ 
+Es ergibt sich damit folgende Formel:
+$$
+S = \frac{x_{max} - x_{min}}{2^{n} - 1}
+$$
+Der Nullpunkt $Z$ ist der Wert, der auf die Gleitkommazahlen abgebildet wird, die dem Wert $0$ entsprechen. \
+Er stellt sicher, dass die Abbildungsfunktion $\mathcal{Q}$ die Zahl $0$ auch auf die quantisierte Ganzzahl $0$ abbildet. \
+Der Nullpunkt lässt sich wie folgt berechnen: \
+$$
+Z = -\frac{x_{min}}{S}
+$$
+Die Parameter $x_{min}$ und $x_{max}$ werden während des sogenannten Kalibrierung bestimmt. \
+Es wird ein Kalibrierungsdatensatz verwendet, der repräsentativ für die Daten ist, die später quantisiert werden sollen. \
+Es ist dabei nicht zwingend notwendig, dass $x_{max}$ und $x_{min}$ den tatsächlichen Extremwerten entsprechen. \
+Häufig kann es sinnvoll sein, Quantile zu verwenden, um einen negativen Einfluss von Ausreißern zu vermeiden. \
+\subsection{Statische Post-Training Quantisierung}\label{subsec:StatischePostTrainingQuantisierung}
+Die statische Post-Training Quantisierung ist eine der einfachsten Methoden, um ein CNN zu quantisieren und bietet sich insbesondere dann an, \
+wenn das Verhalten eines bereits trainierten Netzes möglichst gut durch die eine quantisierte Variante dessen approximiert werden soll. \
+Da dies im Falle dieser Arbeit der Fall ist, wie in späteren Kapiteln zu sehen sein wird, wird diese Methode hier vorgestellt. \\
+Die Ausgangssituation ist ein bereits trainiertes Netz $\phi$. Zunächst wird die Struktur des Netzes betrachtet und \ 
+bestimmte Operationen zusammengefasst. So werden zum Beispiel die sequentiellen Elemeneten \glqq Convolution\grqq{}, \glqq Batch Normalization\grqq{} und \glqq ReLU\grqq{} \ 
+in einen zusammenhängenden \glqq Quantisierungsblock\grqq{} gefasst. Im quantisierten Netz $\phi_{q}$ können diese dann durch die Berechnung eines einzelnen Kernels berechnet werden, was die Inferenzzeit ebenfalls reduziert. \
+Da die Eingabedaten, als auch die gewünschte Ausgabe des Netzes $\phi$ in aller Regel Gleitkommazahlen sind, müssen außerdem an Eingabe und Ausgabe des Netzes Quantisierungsschichten angefügt werden. \\
+Während der sich anschließenden Kalibrierung werden dann repräsentative Daten aus einem Kalibrationsdatensatz verwendet, um das Verhalten des nicht quantisierten Netzes $\phi$ zu simulieren und zu analysieren. \
+An den Ein-und Ausgängen werden die statistischen Informationen gesammelt, die zur Bestimmung der Quantisierungsparameter $S$ und $Z$ benötigt werden. \
+Man beachte, dass jeder Quantisierungsblock seine eigenen Parameter $S$ und $Z$ besitzt. Dieser Kalibrierungsdatensatz sollte möglichst repräsentativ sein, zum Beispiel aus \ 
+der gleiche Domäne stammen. Es reichen aber in aller Regel wenige hundert Beispiele aus, um eine gute Approximation zu erreichen. \\
+Es kann dann die tatsächliche Quantisierung stattfinden. Sämtliche Gewichte werden dann mithilfe des beschrieben Verfahren quantisiert. \
+Schließlich erhält man so ein quantisiertes Netz $\phi_{q}$, das die gleiche Struktur wie das ursprüngliche Netz $\phi$ besitzt, aber nur noch Ganzzahlen verwendet. \
+
 \section{SPADE}\label{sec:SPADE}
+\textcolor{green}{\textit{Abgeschlossen: 30.10. v1}}\\
 Die Methode \textbf{SPADE} ist ein wichtiger Meilenstein in der Unüberwachten Anomalieerkennung.\
 Zahlreiche erfolgreiche Methoden bauen auf SPADE auf und übernehmen wichtige Elemente und Konzepte.\
 Das Paper wurde am 5. Mai 2020 von Niv Cohen und Yedid Hoshen von der Hebräischen Universität von Jerusalem veröffentlicht.\
 Im Folgenden wird SPADE vorgestellt.\
 \subsection{Funktionsweise}\label{subsec:SPADEFunktionsweise}
 \subsubsection*{Feature Extraktion}
-Wie bereits in \ref{subsec:ResNetsAsFeatureExtractor} beschrieben, werden ResNets erfolgreich als Feature-Extraktoren verwendet.\
-Der Name \glqq SPADE\grqq{} steht hierbei für \glqq Semantic Pyramid Anomaly Detection\grqq{}. Betrachtet man \ref{fig:ResNetPyramid} wird klar warum von einer \glqq Pyramide\grqq{} gesprochen werden kann:\
+Wie bereits in \ref{subsec:ResNetsAsFeatureExtractor} beschrieben, werden ResNets erfolgreich als Feature Extraktoren verwendet.\
+Der Name \glqq SPADE\grqq{} ist dabei ein Akronym für \glqq Semantic Pyramid Anomaly Detection\grqq{}. Betrachtet man \ref{fig:ResNetPyramid} wird klar warum von einer \glqq Pyramide\grqq{} gesprochen werden kann:\
 Es werden die Feature Maps der einzelnen Schichten, konkret der Schichten \glqq Layer1, Layer2 und Layer3\grqq{} als Feature unverändert verwendet.\
-Dabei wird auf einen Einbettungsprozess, wie bei anderen Methoden üblich, verzichtet.\ Durch die mit der Tiefe des Netzes abnehmende Auflösung der Feature Maps, \
+Die Hierarchieebnene, die für die Anomalieerkennung verwendet werden, werden im Folgenden als Menge $j$ bezeichnet. \
+Hier ist $j = \{1,2,3\}$, da die Schichten Layer1, Layer2 und Layer3 verwendet werden.\
+Dabei wird auf einen Einbettungsprozess, wie bei anderen Methoden üblich, verzichtet.\ 
+Durch die mit der Tiefe des Netzes abnehmende Auflösung der Feature Maps, \
 entsteht so eine \glqq Pyramidale\grqq{} Struktur, die eben die Grundlage für die Namensgebung ist.\
 Zusätzlich wird der 1D-Vektor, der durch die \glqq Flatten\grqq{}-Schicht erzeugt wird, als Feature verwendet, um instanzweise, also für jedes Bild als Ganzes, zu entscheiden, ob eine \
 Anomalie vorliegt, wie im nächsten Abschnitt beschrieben.\
-Bezeichnen wir das ResNet als Feature-Extraktor mit $F$, so lassen sich die Feature $f_{i}$ eines gegebenen Bildes $x_{i}$ wie folgt beschreiben:
-$$f_{i} = F(x_{i})$$
-In der Trainings- bzw. Initialisierungsphase werden die Feature $f_{i}$ aller Trainingsbilder $x_{i}$, welche alle nominal sind, extrahiert und gespeichert.\
+Bezeichnen wir das ResNet als Feature-Extraktor mit $\phi$, so lassen sich die Feature $f_{i}$ eines gegebenen Bildes $x_{i}$ wie folgt beschreiben:
+$$f_{i} = \phi(x_{i})$$
+Die Feature werden unverändert weiter verwendet, das heißt, es wird kein expliziter Einbettungsprozess, wie bei anderen Methoden üblich, durchgeführt.\
+In der Trainings- bzw. Initialisierungsphase werden die Feature $f_{i}$ aller Trainingsbilder $x_{i}\in\mathcal{X}_{train}$, welche alle nominal sind, extrahiert und gespeichert.\
 Diese Menge wird im Folgenden mit $F_{train}$ bezeichnet.\
 \subsubsection*{Instanzklassifizierung}
-Die Instanzklassifizierung ist der zweite Schritt von SPADE. Es wird dabei für jedes Bild $y_{i}$ aus der Menge an Testbilder $Y$ entschieden, ob es sich um eine Anomalie handelt oder nicht.\
+Die Instanzklassifizierung ist der zweite Schritt von SPADE, der sich der Feature Exktraktion anschließt. Es wird dabei für jedes Bild $x_{i}$ aus der Menge an Testbilder $\mathcal{X}_{test}$ entschieden, ob es sich um eine Anomalie handelt oder nicht.\
 Dies geschieht ausschließlich anhand des 1D-Vektors, der durch die \glqq Flatten\grqq{}-Schicht erzeugt wird.\
-Hierzu wird für ein gegebenes Testbild $y_{i}$, die $K$ nächsten Nachbarn in $F_{train}$ gesucht. Diese Menge an $K$ Vektoren wird fortan als $N_{k}(f_{y})$ bezeichent. \
-Es wird eine Distanz auf die folgende Art und Weise bestimmt:
+Hierzu wird für ein gegebenes Testbild $x_{i}$, die $K$ Nächsten Nachbarn in $F_{train}$ gesucht. Diese Menge an $K$ Vektoren wird fortan als $N_{k}(f_{y})$ bezeichent. \
+Es wird die euklidische Distanz auf die folgende Art und Weise bestimmt:
 $$
-d(y_{i}) = \frac{1}{K} \sum_{f\in N_{k}(f_{y_{i}})} \left|\left| f - f_{y_{i}} \right|\right|^{2}
+d(x_{i}) = \frac{1}{K} \sum_{f\in N_{k}(f_{x_{i}})} \left|\left| f - f_{x_{i}} \right|\right|^{2}
 $$
-Die Distanz $d(y_{i})$ wird dann mit einem Schwellenwert $\tau$ verglichen. Ist die Distanz kleiner als der Schwellenwert, so wird das Bild als nominal klassifiziert, ansonsten als Anomalie.\
+Die Distanz $d(x_{i})$ enstpricht dann dem, dem Bild zugewiesenen Anomaliegrad und kann dann mit einem Schwellenwert $\tau$ verglichen. Ist die Distanz kleiner als der Schwellenwert, so wird das Bild als nominal klassifiziert, ansonsten als Anomalie.\
+Zur Evaluation wird, wie in dieser Arbeit üblich und in (TODO --> Ref) beschrieben, der AUROC-Wert verwendet.\
 \subsubsection*{Segmentierung}
-Nachdem eine Instanzklassifiziergung ergeben hat, dass es sich um ein anomales Bild handelt, besteht die nächste Aufgabe darin, die Anomalie oder mehrere Anomalien auf dem Bild zu lokalisieren.\
+Nachdem eine Instanzklassifiziergung ergeben hat, dass es sich um ein anomales Bild handelt, besteht die nächste Aufgabe darin, Anomalien auf dem Bild zu lokalisieren.\
 Dieser Schritt wird übersprungen, wenn das Bild als nominal klassifiziert wurde.\\
-Die naive Methode, die Anomalie zu lokalisieren, wäre es, die Differenz zwischen dem anomalen Bild und dem ausgerichtete Bild des nächsten Nachbarn zu berechnen. Dort, wo die Differenz am größten ist, \
-wird die Anomalie vermutet. Allerdings hat diese Methode einige Schwachstellen. Zum einen kann die Ausrichtung des nächsten Nachbarn so, dass das zu untersuchende Objekt im Bild an der gleichen Stelle ist, \
-fehlschlagen. Insbesondere. Auch kann insbesondere bei eienem kleinen Datensatz und Objekten, die komplexe Variationen aufweisen möglicherweise kein passender Nachbar gefunden werden, was zu falsch positiven (anomalen) \
-Klassifizierungen führen kann. Außerdem könnte die Berechnung der Differenz sehr empfindlich auf die verwendete Berechnungsmethode sein.(TODO... Vllt einfach weg lassen?)\\ 
+Eine naive Methode, die Anomalie zu lokalisieren, wäre es, die Differenz zwischen dem anomalen Bild und dem ausgerichtete Bild des Nächsten Nachbarn zu berechnen. Dort, wo die Differenz am größten ist, \
+wird die Anomalie vermutet. Die Ausrichtung geschieht derart, dass die Objekte in den zu vergleichenden Bildern sich möglichst vollständig überlappen. \ 
+Allerdings hat diese Methode einige Schwachstellen. Zum einen kann die Ausrichtung des nächsten Nachbarn so, dass das zu untersuchende Objekt im Bild an der gleichen Stelle ist, \
+fehlschlagen. Auch kann insbesondere bei eienem kleinen Datensatz und Objekten, die komplexe Variationen aufweisen möglicherweise kein passender Nachbar gefunden werden, was zu falsch positiven (anomalen) \
+Klassifizierungen führen kann. Außerdem könnte die Berechnung der Differenz sehr empfindlich auf die verwendete Berechnungsmethode sein. \\ 
 Um diese Probleme zu überwinden, wird eine Übereinstimmungsmethode präsentiert, die mit vielen \glqq Bildern\grqq{} arbeitet (\glqq multi-image correspondence method\grqq{}). Diese Bilder entsprechen den Feature Maps der Schichten Layer1, Layer2 und Layer3, \
 also gewissermaßen den Quader in \ref{fig:ResNetPyramid}.\\
-Nun gilt es zu jeder Pixelposition $p\in P$ die korresponierenden Feature $F(x_{i}, p | p\in P)$ zu bestimmen. Auf jedes Bild aus dem Trainingsdatensatz $x_{i}$ \ 
-angewandt und ergibt sich dann die \glqq Gallerie\grqq{} zu $G = \{ {F(x_{1}, p | p\in P)}\cup {F(x_{2},p|p\in P)} .. \cup {F(x_{K},p|p\in P)} \}$.\\
-Der Anomaliegrad eines Pixels $p$ ist dann gegeben durch die durchschnittliche Distanz zwischen dem Feature $F(y_{i},p)$ des anomalen Bildes $y_{i}$ und \ 
-den $\kappa$ nächsten Featuren aus der Gallerie $G$. Es ergibt sich also für einen Pixel $p$ im Testbild $y_{i}$ folgende Formel: \
+Nun gilt es zu jeder Pixelposition $(h,w)\in \{1,...,h^{*}\}\times\{1,...,w^{*}\}$ mit $h^{*}$ und $q^{*}$ als Kantenlängen des Eingangsbildes, \\ 
+die korresponierenden Feature $F(x_{i}, h,w)$ zu bestimmen. Auf jedes Bild $x_{i}\in\mathcal{X}_{train}$ \
+angewandt und ergibt sich dann die \glqq Gallerie\grqq{} zu $G = \{ {F(x_{1}, h, w)}\cup {F(x_{2},h,w)} .. \cup {F(x_{K},h,w)} \}$.\\
+Der Anomaliegrad eines Pixels $(h,w)$ ist dann gegeben durch die durchschnittliche Distanz zwischen dem Feature $F(y_{i},h,w)$ des anomalen Bildes $y_{i}$ und \ 
+den $\kappa$ nächsten Featuren aus der Gallerie $G$. Es ergibt sich also für einen Pixel $(h,w)$ im Testbild $y_{i}$ folgende Formel: \
 $$
-d(y_{i},p) = \frac{1}{\kappa} \sum_{f\in N_{\kappa}(F(y_{i},p))} \left|\left| f - F(y_{i},p) \right|\right|^{2}
+d(y_{i},h,w) = \frac{1}{\kappa} \sum_{f\in N_{\kappa}(F(y_{i},h,w))} \left|\left| f - F(y_{i},h,w) \right|\right|^{2}
 $$
-Für einen gegebenen Schwellwert $\theta$ wird ein Pixel $p$ als anomales Pixel klassifiziert, wenn $d(y_{i},p) > \theta$ gilt.
+Für einen gegebenen Schwellwert $\theta$ wird ein Pixel $h,w$ als anomales Pixel klassifiziert, wenn $d(y_{i},p) > \theta$ gilt.
 Dies ist dann der Fall, wenn wir kein nominales Feature in $G$ finden können, welches dem Feature $F(y_{i},p)$ ausreichend ähnlich ist.\\
+Auvh hier gilt, dass ein pixelweiser AUROC aus $d(y_{i},h,w)$ bestimmt werden kann, um die Methode zu evaluieren.\
 Dadurch, dass die Gallerie $G$ die Positionsinformation $p$ marginalisiert, wird die Segmentierung robust gegenüber der Ausrichtung. Anschaulich gesprochen, wird \
 also in jedem Bild an allen Positionen nach ähnlichen Features gesucht.
 \subsection{Ergebnisse und Diskussion}\label{subsec:SPADEResults}
-Wie bereits erwähnt, markiert diese Arbeit einen wichtigen Entwicklungsschritt in der Forschung zur Unüberwachten Anomalieerkennung. \
+Wie bereits erwähnt, markiert diese Arbeit einen wichtigen Entwicklungsschritt in der Forschung zur (Unüberwachten --> TODO) Anomalieerkennung. \
 Folgende Aspekte sollten in diesem Zusammenhang hervorgehoben werden:
 \begin{itemize}
   \item SPADE ist die erste ganzheitliche Methode, die auf ImageNet vortrainierte ResNets als Feature-Extraktoren verwendet. Dieser Ansatz hat sich als sehr erfolgreich erwiesen und wird von zahlreichen Methoden übernommen. \
-  \item Das Zusammenfassen aller extrahierten Features aus den Testbildern zu einer Menge $G$ löst das Problem der Ausrichtung und ermöglicht eine robuste Segmentierung. Auch diese Idee wird uns bei PatchCore (\ref{ch:PatchCore}) wiederbegegnen.\
+  \item Das Zusammenfassen aller extrahierten Feature aus den Testbildern zu einer Menge $G$ löst das Problem der Ausrichtung und ermöglicht eine robuste Segmentierung. Auch diese Idee wird uns bei PatchCore (\ref{ch:PatchCore}) wiederbegegnen.\
   \item Das Bestimmen des Anomaliegrades mithilfe einer kNN-Suche ist ein einfacher und effektiver Ansatz, der sich auch in modifizierter Form in vielen anderen Methoden wiederfindet.\
 \end{itemize}
 Insbesondere in der pixelweisen Klassifikation von Anomalien hat sich SPADE als geeignet erwiesen. Auch in der Instanzklassifiziergung erreicht diese Methode auf dem damals \
-noch jungen Datensatz MVTecAD gute, zum Zeitpunkt der Veröffentlichung der Methode, sogar das beste Ergebnisse.\\
+noch jungen Datensatz MVTecAD gute, zum Zeitpunkt der Veröffentlichung der Methode, sogar die besten Ergebnisse.\\
 Für das Ziel dieser Arbeit, welche den Fokus auf die Instanzklassifiziergung und die Laufzeitoptimierung legt, ist SPADE allerdings eher ungeeignet. \
-Zum Einen sind \num{85,5}\% erreichte Bildklassifizierungsgenauigkeit auf MVTecAD für die Instanzklassifizierung nicht mit neueren, zum Teil aber auf SPADE aufbauenden Methoden, konkurrenzfähig. \
+Zum einen sind \num{85,5}\% erreichte Bildklassifizierungsgenauigkeit auf MVTecAD für die Instanzklassifizierung nicht mit neueren, zum Teil aber auf SPADE aufbauenden Methoden, konkurrenzfähig. \
 Zum Anderen ist die notwendige kNN Suche, die für jedes Testbild durchgeführt werden muss, sehr rechenintensiv. Dieser Rechenaufwand skaliert linear mit der Anzahl an Bildern im Trainingsdatensatz und mit der Anzahl der Pixel pro Bild.\
 Kann man auf eine Segmentierung verzichten, verkleinert sich der Rechenaufwand zwar deutlich, es muss aber dennoch eine kNN-Suche über alle Trainingsbilder für jedes Testbild durchgeführt werden, wodurch die Laufzeit wiederum von der Größe des Trainingsdatensatz abhängt, \ 
 auch wenn die Auflösung der Bilder keinen Einfluss mehr hat. \
 Den Anstoß und die Impulse, die durch diese Veröffentlichung gesetzt wurden, sind jedoch nicht zu unterschätzen. \
 
 \section{PaDiM}\label{sec:PaDiM}
+\textcolor{green}{\textit{Abgeschlossen: 31.10. v1}}\\
 Die Methode \textbf{PaDiM} wurde am 17. November 2020 von Defard et al. (Universität Paris-Saclay) veröffentlicht.\
-Es werden einige Aspekte von SPADE übernommen, vor allem aber Schwächen der Methode erfolgreich addressiert. Einer der wesentlichen Unterschiede zwischen PaDiM und SPADE ist, die Weise auf die der Anomaliescore bestimmt wird. \ 
-PaDiM markierte damit die beste Instanzklassifizierungsgenauigkeit auf dem Datensatz MVTecAD zum Zeitpunkt der Veröffentlichung und hielt dies bis zum Erscheinen der Methode \glqq PatchCore\grqq{}.
+Es werden einige Aspekte von SPADE übernommen, vor allem aber Schwächen der Methode erfolgreich addressiert. \ 
+Einer der wesentlichen Unterschiede zwischen PaDiM und SPADE ist, die Weise, wie der Anomaliegrad bestimmt wird. \ 
+PaDiM markierte damit die beste Instanzklassifizierungsgenauigkeit auf dem Datensatz MVTecAD zum Zeitpunkt der \ 
+Veröffentlichung und hielt dies bis zum Erscheinen der Methode \glqq PatchCore\grqq{}.\cite{paperswithcode}
 Nachfolgend wird der Ansatz von PaDiM vorgestellt und diskutiert.\
 \subsection{Funktionsweise}\label{subsec:PaDiMFunktionsweise}
 \begin{figure}[H]
@@ -366,45 +437,47 @@ PaDiM kann in drei Schritte unterteilt werden: \
 \end{enumerate}
 \ref{fig:PaDiMOverview} veranschaulicht den Prozess exklusive der Inferenz. \
 \subsubsection*{Feature Extraktion und Einbettungsprozess}
-Der Prozess des Erzeugens von Featuren ist bei PaDiM sehr ähnlich zu dem von SPADE: \
-Auch hier werden Feature Maps unterschiedlicher Auflösung und Abstraktionsebene zu einem Featurevektor zusammengefasst, der mit einer Position bzw. einem Pixel des Eingangsbildes korresponiert. \
+Der Prozess des Erzeugens von Featuren ist bei PaDiM sehr ähnlich zu SPADE: \
+Auch hier werden Feature Maps unterschiedlicher Auflösung und Hierarchieebene zu einem Featurevektor zusammengefasst, der mit einer Position bzw. einem Pixel des Eingangsbildes korresponiert. \
 Die Feature Map, welche die höchste Auflösung besitzt, also die Feature Map der ersten zur Feature Extraktion ausgewählten Schicht, definiert die Auflösung der Anomaliesegmentierung. \
-Nehmen wir an diese Feature Map habe eine Auflösung von $W\times H$, so korresponiert also zu jeder Position $(i,j)\in [1,W]\times[1,H]$ ein Featurevektor $x_{ij}$ (\glqq Patch Embedding Vektor\grqq{}). \\
+Nehmen wir an diese Feature Map habe eine Auflösung von $w^{*}\times h^{*}$, so korresponiert also zu jeder Position $(h,w)\in \{1,...,h^{*}\}\times \{1,...,w^{*}\}$ ein Featurevektor $x_{h,w}$.
+Dieser Vektor wird in Einklang mit der Veröffentlichung \glqq Patch Embedding Vektor\grqq{} genannt. \\
 \subsubsection{Bestimmen der Gaußverteilungen}
-PaDiM modelliert für jede Position eine multivariate Normalverteilung, die durch die Featurevektoren aller Trainingsbilder an dieser Position definiert wird. \\
-Zunächst wird hierzu die Menge an Patch Embedding Vektoren für eine Position $(i,j)$ aus dem gesamten Trainingsdatensatz gebildet. Diese Menge \
-$X_{ij} = \{ {x_{ij}^{k} | k\in [1,N]} \}$ aus den $N$ nominalen Bildern im Trainingsdatensatz wird dann benutzt, um die Normalverteilung für die Position $(i,j)$ zu bestimmen. \
-Es wird also angenommen, $X_{ij}$ würde von der multivariaten Gaußverteilungen $N(\mu_{ij}, \Sigma_{ij})$ erzeugt werden. \
-Die Parameter $\mu_{ij}$ und $\Sigma_{ij}$ werden dann wie folgt geschätzt: \
+PaDiM modelliert für jede Position $(h,w)$ eine multivariate Normalverteilung, die durch die Patch Embedding Vektoren aller Trainingsbilder an dieser Position definiert wird. \\
+Zunächst wird folgerichtig die Menge an Patch Embedding Vektoren für eine Position $(h,w)$ aus dem gesamten Trainingsdatensatz gebildet. Diese Menge \
+$X_{h,w} = \{ {x_{h,w}^{k} | k\in \{1,...,N\}} \}$ aus den $N$ nominalen Bildern im Trainingsdatensatz wird dann benutzt, um die Normalverteilung für die Position $(h,w)$ zu bestimmen. \
+Es wird also angenommen, $X_{h,w}$ würde von der multivariaten Gaußverteilungen $N(\mu_{h,w}, \Sigma_{h,w})$ erzeugt werden. \
+Die Parameter $\mu_{h,w}$ und $\Sigma_{h,w}$ werden dann wie folgt geschätzt: \
 $$
-\mu_{ij} = \frac{1}{N} \sum_{k=1}^{N} x_{ij}^{k}
+\mu_{h,w} = \frac{1}{N} \sum_{k=1}^{N} x_{h,w}^{k}
 $$
 $$
-\Sigma_{ij} = \frac{1}{N-1} \sum_{k=1}^{N} (x_{ij}^{k} - \mu_{ij})(x_{ij}^{k} - \mu_{ij})^{T} + \epsilon I
+\Sigma_{h,w} = \frac{1}{N-1} \sum_{k=1}^{N} (x_{h,w}^{k} - \mu_{h,w})(x_{h,w}^{k} - \mu_{h,w})^{T} + \epsilon I
 $$
-wobei der Regularisierungsterm $\epsilon I$ hinzugefügt wird, um die Invertierbarkeit bzw. den vollen Rang der Kovarianzmatrix $\Sigma_{ij}$ zu gewährleisten. \
-Schließlich wird die multivariate Gaußverteilung $N(\mu_{ij}, \Sigma_{ij})$ für jede Position $(i,j)$ im Bild definiert.\
+wobei der Regularisierungsterm $\epsilon I$ hinzugefügt wird, um die Invertierbarkeit bzw. den vollen Rang der Kovarianzmatrix $\Sigma_{h,w}$ zu gewährleisten. \
+Schließlich wird die multivariate Gaußverteilung $N(\mu_{h,w}, \Sigma_{h,w})$ für jede Position $(h,w)$ im Bild definiert.\
 \subsubsection{Bestimmen des Anomaliegrades}
-Um den Anomaliegrad zu bestimmen, wird die Mahalanobis-Distanz herangezogen.%\cite{mahalanobis1936generalized} \
+Um den Anomaliegrad zu bestimmen, wird die Mahalanobis-Distanz herangezogen \cite{mahalanobis1936generalized}. \
 Die Mahalanobis-Distanz ist eine Verallgemeinerung der euklidischen Distanz, die die Korrelation zwischen den Dimensionen der Daten berücksichtigt. \
-In diesem Fall lässt sich die Mahalanobis-Distanz für die Position $(i,j)$ und einem aus einem Testbild extrahierten Patch Embedding Vektor $y_{ij}$ wie folgt berechnen: \
+In diesem Fall lässt sich die Mahalanobis-Distanz für die Position $(h,w)$ und einem aus einem Testbild extrahierten Patch Embedding Vektor $y_{h,w}$ wie folgt berechnen: \
 $$
-M(y_{ij}) = \sqrt{(y_{ij} - \mu_{ij})^{T} \Sigma_{ij}^{-1} (y_{ij} - \mu_{ij})}
+M(y_{h,w}) = \sqrt{(y_{h,w} - \mu_{h,w})^{T} \Sigma_{h,w}^{-1} (y_{h,w} - \mu_{h,w})}
 $$
 Damit kann dann eine Anomaliekarte $M$ für ein Testbild $y$ erzeugt werden:
 $$
-M = (M(y_{ij}))_{1<=i<=W, 1<=j<=H}
+M = (M(y_{h,w}))_{1<=w<=w^{*}, 1<=h<=h^{*}}
 $$
-Hierbei deuten hohe Werte auf eine Anomalie hin, während niedringe Werte auf einen nominalen Bildbereich hinweisen. \
+Hierbei deuten hohe Werte auf eine Anomalie hin, während niedrige Werte auf einen nominalen Bildbereich hinweisen. \
 Durch Maximalwerbildung über die Anomaliekarte $M$ kann dann ein Anomaliegrad $s$ für ein Testbild $y$ bestimmt werden: \
 $$
-s(y) = \max_{1<=i<=W, 1<=j<=H} M(y_{ij})
+s(y) = \max_{h,w} M(y_{h,w})
 $$
+Basierend auf allen Anomaliegraden $s(y)$ für alle Testbilder $y\in\mathcal{X}_{test}$ kann dann der AUROC bestimmt werden. \
 \subsection{Ergebnisse und Diskussion}\label{subsec:PaDiMResults}
 Wie bereits zu Beginn dieses Kapitels erwähnt, erreicht PaDiM zum Zeitpunkt der Veröffentlichung die beste Instanzklassifizierungsgenauigkeit auf dem Datensatz MVTecAD mit \num{97,5}\%. 
 Auch die Segmentierungsergebnisse sind mit \num{97,9}\% zum Veröffentlichungszeitpunkt State-of-the-Art. \\
 Ein spannender Aspekt, der in diesem Veröffentlichung untersucht wird, ist das Reduzieren der Anzahl an Kanälen bzw. die Reduzierung der Dimensionalität der Featurevektoren: \\
-Es wird gezeigt, dass im Falle eines ResNet18 als Backbone die Dimensionalität von ursprünglich \num{448} auf \num{200} oder sogar \num{100} reduziert werden kann, ohne \
+Es wird gezeigt, dass im Falle eines ResNet18 als Backbone die Dimensionalität von ursprünglich \num{448} auf \num{200} oder sogar \num{100} reduziert werden kann, ohne\
 dass die Klassifizierungsgenauigkeit signifikant sinkt. Dabei wurden die zu entfernenden Dimensionen zufällig ausgewählt und die Ergenisse über mehrere Durchläufe gemittelt. \
 Im Falle aller \num{448} Dimensionen wird eine Genauigkeit von \num{97,1}\% erreicht, während bei \num{200} Dimensionen eine Genauigkeit von \ 
 \num{97,0}\% und bei \num{100} Dimensionen eine Genauigkeit von \num{96,7}\% erreicht wird. \\
@@ -413,12 +486,12 @@ Die Komplexität in der Landau-Notation für die Berechnung der Mahalanobis-Dist
 wobei $d$ die Dimensionalität der Featurevektoren ist, in diesem Beispiel also \num{448}, \num{200} bzw. \num{100}. \
 Dass der Einbruch der Genauigkeit bei einer Reduzierung der Dimensionalität so gering ist, ist auf die Mahalanobis-Distanz zurückzuführen, die die Korrelation zwischen den Dimensionen der Daten berücksichtigt. \
 Weil die einzelnen Dimensionen teilweise stark korreliert sind, kann die Dimensionalität reduziert werden, ohne dass die Genauigkeit signifikant sinkt. \
-Dies ist ein Vorteil gegenüber der euklidischen Distanz, die die Dimensionen unabhängig voneinander betrachtet, aber auch deutlich weniger komplex und damit laufzeitkritisch ist, als die \
+Dies ist ein Vorteil gegenüber der euklidischen Distanz, die die Dimensionen unabhängig voneinander betrachtet, aber auch deutlich weniger komplex und laufzeitkritisch ist, als die\
 Mahalanobis-Distanz. \\
-Ein Verbesserung gegenüber SPADE ist, dass die Instanzklassifiziergung auf Grundlage der Anomaliekarte $M$ erfolgt, die durch die Maximalwerbildung über alle Positionen im Bild erzeugt wird. \
-Diese Anomaliekarte wird mithilfe der Feature aus den ersten drei von vier Schichten des ResNets erzeugt, die, wie in \ref{subsec:ResNetsAsFeatureExtractor} beschrieben, nur einen eher geringen \glqq Bias\grqq{}  \
+Ein Verbesserung gegenüber SPADE ist, dass die Instanzklassifiziergung auf Grundlage der Anomaliekarte $M$ erfolgt und durch Maximalwerbildung über alle Positionen im Bild erzeugt wird. \
+Diese Anomaliekarte wird mithilfe der Feature aus den ersten drei von vier Schichten ($j=\{1,2,3\}$) des ResNets erzeugt, die, wie in \ref{subsec:ResNetsAsFeatureExtractor} beschrieben, nur einen eher geringen \glqq Bias\grqq{}\
 hin zu ImageNet aufweisen. SPADE wiederum nutzt den 1D-Vektor, der durch die \glqq Flatten\grqq{}-Schicht erzeugt wird, um die Instanzklassifizierung durchzuführen, was zwei Nachteile mit sich bringt: \
-Es ist ein Bias zu erwarten und durch die durch Mittelwertbildung erreichte Dimensionsreduktion können wichtige, zu einer lokalen Anomalie gehörende Detailinformationen verloren gehen. \
+Es ist der Bias zur Bildklassifikation zu erwarten und durch die durch Mittelwertbildung erreichte Dimensionsreduktion können wichtige, zu einer lokalen Anomalie gehörende Detailinformationen verloren gehen. \
 Bei PaDiM können selbst lokale Anomalien, die nur wenige Pixel groß sind, erkannt werden, was eine enorme Verbesserung darstellt und in allen im Haupteil dieser Arbeit vorgestellten Methoden übernommen wird. \
 \section{Raspberry Pi 4B}\label{sec:RaspberryPi4B}
 \subsection{Allgemeines}\label{subsec:RaspberryPi4BAllgemeines}

@@ -18,6 +18,7 @@ else:
 import torch.nn as nn
 from typing import List, Tuple, OrderedDict
 import torch_pruning as tp
+# import icecream as ic
 
 class Backbone(nn.Module):
     def __init__(
@@ -30,6 +31,8 @@ class Backbone(nn.Module):
         prune_l1_norm: Tuple[bool, float] = (False, 0.0),
         exclude_relu: bool = False,
         sigmoid_in_last_layer: bool = False,
+        lrelu_in_last_layer: bool = False,
+        softmin_in_last_layer: bool = False,
         need_for_own_last_layer: bool = False,
         quantize_qint8_prepared: bool = False,
         quantize_qint8_torchvision: bool = False,
@@ -44,7 +47,9 @@ class Backbone(nn.Module):
         self.prune_torch_pruning = prune_torch_pruning
         self.exclude_relu = exclude_relu
         self.sigmoid_in_last_layer = sigmoid_in_last_layer
-        self.need_for_own_last_layer = sigmoid_in_last_layer or exclude_relu or prune_output_layer[0] or need_for_own_last_layer
+        self.lrelu_in_last_layer = lrelu_in_last_layer
+        self.softmin_in_last_layer = softmin_in_last_layer
+        self.need_for_own_last_layer = sigmoid_in_last_layer or exclude_relu or prune_output_layer[0] or need_for_own_last_layer or lrelu_in_last_layer or softmin_in_last_layer
         self.quantize_qint8_prepared = quantize_qint8_prepared
         self.quantize_qint8_torchvision = quantize_qint8_torchvision
         self.hooks_needed = hooks_needed
@@ -56,26 +61,27 @@ class Backbone(nn.Module):
         else:
             self.feature_dim = [int(32*(2**this_layer)) for this_layer in layers_needed]
         
-        if self.quantize_qint8_prepared:
+        # if self.quantize_qint8_prepared:
+        if not self.quantize_qint8_torchvision:
             if self.model_id.__contains__('WRN50'):
                 weights = Wide_ResNet50_2_Weights.IMAGENET1K_V1#Wide_ResNet50_2_Weights.DEFAULT
-                self.model =  wide_resnet50_2(weights=weights)
+                self.model =  wide_resnet50_2(weights=weights, quantize_prepared=self.quantize_qint8_prepared)
                 self.procedure_resnet()    
             elif self.model_id.__contains__('WRN101'):
                 weights = Wide_ResNet101_2_Weights.DEFAULT
-                self.model = wide_resnet101_2(weights=weights)
+                self.model = wide_resnet101_2(weights=weights, quantize_prepared=self.quantize_qint8_prepared)
                 self.procedure_resnet()
             elif self.model_id.__contains__('RN18'):
                 weights = ResNet18_Weights.DEFAULT
-                self.model = resnet18(weights=weights)
-                self.procedure_resnet()
+                self.model = resnet18(weights=weights, quantize_prepared=self.quantize_qint8_prepared)
+                self.procedure_resnet() 
             elif self.model_id.__contains__('RN34'):
                 weights = ResNet34_Weights.DEFAULT
-                self.model = resnet34(weights=weights)
+                self.model = resnet34(weights=weights, quantize_prepared=self.quantize_qint8_prepared)
                 self.procedure_resnet()
             elif self.model_id.__contains__('RN50'):
                 weights = ResNet50_Weights.DEFAULT
-                self.model = models.resnet50(weights=weights)
+                self.model = models.resnet50(weights=weights, quantize_prepared=self.quantize_qint8_prepared)
                 self.procedure_resnet()
         elif self.quantize_qint8_torchvision:
             if self.model_id.__contains__('RN50'): # this is actually a WideResNet50
@@ -88,28 +94,7 @@ class Backbone(nn.Module):
                 self.procedure_resnet()     
             else:
                 raise NotImplementedError('Only ResNet18 and ResNet50 are supported for quantization with torchvision\' quantization models.')
-        else:
-            if self.model_id.__contains__('WRN50'):
-                weights = models.Wide_ResNet50_2_Weights.DEFAULT
-                self.model =  models.wide_resnet50_2(weights=weights)
-                self.procedure_resnet()    
-            elif self.model_id.__contains__('WRN101'):
-                weights = models.Wide_ResNet101_2_Weights.DEFAULT
-                self.model =  models.wide_resnet101_2(weights=weights)
-                self.procedure_resnet()
-            elif self.model_id.__contains__('RN18'):
-                weights = models.ResNet18_Weights.DEFAULT
-                self.model = models.resnet18(weights=weights)
-                self.procedure_resnet()
-            elif self.model_id.__contains__('RN34'):
-                weights = models.ResNet34_Weights.DEFAULT
-                self.model = models.resnet34(weights=weights)
-                self.procedure_resnet()
-            elif self.model_id.__contains__('RN50'):
-                weights = models.ResNet50_Weights.DEFAULT
-                self.model = models.resnet50(weights=weights)
-                self.procedure_resnet()
-          
+     
         if self.model_id.__contains__('CX_XS'):
             weights = models.ConvNeXt_Tiny_Weights
             self.model = models.convnext_tiny(weights=weights).features
@@ -144,6 +129,7 @@ class Backbone(nn.Module):
             param.requires_grad = False
         
     def hook_t(self,module, input, output):
+        # print('1: ', torch.min(output))
         self.features.append(output)
     
     def hook_q(self, module, input, output):
@@ -172,7 +158,18 @@ class Backbone(nn.Module):
             selected_idx = self.selected_idx_dict[2]# if len(self.selected_idx_dict[2]) == 0 else list(range(int(128)))
         elif output.shape[1] == int(256):
             selected_idx = self.selected_idx_dict[3]# if len(self.selected_idx_dict[3]) == 0 else list(range(int(256)))
-        self.features.append(output[:,selected_idx,:,:])
+        
+        out = output[:,selected_idx,:,:]
+        if self.sigmoid_in_last_layer:
+            sigmoid = torch.nn.Sigmoid()
+            out = sigmoid(out)
+        elif self.lrelu_in_last_layer:
+            lrelu = torch.nn.LeakyReLU(0.2, inplace=True)
+            out = lrelu(out)
+        elif self.softmin_in_last_layer:
+            exper = torch.nn.Softmin()
+            out = exper(out)
+        self.features.append(out)
 
     def procedure_resnet(self):
         '''
@@ -198,7 +195,6 @@ class Backbone(nn.Module):
                     ch_sparsity=self.prune_torch_pruning[1], 
                     ignored_layers=ignored_layers,
                 )
-               
                 for i in range(iterative_steps):
                     if isinstance(imp, tp.importance.TaylorImportance):
                         # Taylor expansion requires gradients for importance estimation
@@ -208,7 +204,12 @@ class Backbone(nn.Module):
                 for param in self.parameters():
                     param.requires_grad = False
             if self.hooks_needed:
-                if not self.quantize_qint8_torchvision:     
+                if not self.quantize_qint8_torchvision:  
+                    print('\n\n\nno quantize\n\n')  
+                    # ic(list(self.model.children())
+                    # ic(list(self.model.children()[5])
+                    # ic(self.model)
+                    print(list(self.model.children())[5])
                     if int(1) in self.layers_needed:
                         list(self.model.children())[4][-1].register_forward_hook(self.hook_t)
                     if int(2) in self.layers_needed:
@@ -287,9 +288,11 @@ class Backbone(nn.Module):
                 input_size = (1,1024,7,7)
             
             if len(self.layers_needed) > 1:
-                output_layer = OwnBottleneck(dict_1, dict_2, dict_3, self.prune_output_layer[0], self.selected_idx_dict[max(self.layers_needed)], input_size, self.exclude_relu, self.sigmoid_in_last_layer)
+                output_layer = OwnBottleneck(dict_1, dict_2, dict_3, self.prune_output_layer[0], self.selected_idx_dict[max(self.layers_needed)], 
+                                             input_size, self.exclude_relu, self.sigmoid_in_last_layer, self.lrelu_in_last_layer, self.softmin_in_last_layer)
             else:
-                output_layer = OwnBottleneck(dict_1, dict_2, dict_3, self.prune_output_layer[0], self.prune_output_layer[1], input_size, self.exclude_relu, self.sigmoid_in_last_layer)
+                output_layer = OwnBottleneck(dict_1, dict_2, dict_3, self.prune_output_layer[0], self.prune_output_layer[1], input_size, 
+                                             self.exclude_relu, self.sigmoid_in_last_layer, self.lrelu_in_last_layer, self.softmin_in_last_layer)
             del self.model
             self.model = nn.Sequential(layers_1, layers_2, output_layer)
 
@@ -333,9 +336,11 @@ class Backbone(nn.Module):
             elif layer_to_include == int(4):
                 input_size = (1,512,7,7)
             if len(self.layers_needed) > 1:
-                output_layer = OwnBasicblock(dict_1, dict_2, self.prune_output_layer[0], self.selected_idx_dict[max(self.layers_needed)], input_size, self.exclude_relu, self.sigmoid_in_last_layer)
+                output_layer = OwnBasicblock(dict_1, dict_2, self.prune_output_layer[0], self.selected_idx_dict[max(self.layers_needed)], input_size, 
+                                             self.exclude_relu, self.sigmoid_in_last_layer, self.lrelu_in_last_layer, self.softmin_in_last_layer)
             else:
-                output_layer = OwnBasicblock(dict_1, dict_2, self.prune_output_layer[0], self.prune_output_layer[1], input_size, self.exclude_relu, self.sigmoid_in_last_layer)  
+                output_layer = OwnBasicblock(dict_1, dict_2, self.prune_output_layer[0], self.prune_output_layer[1], input_size, 
+                                             self.exclude_relu, self.sigmoid_in_last_layer, self.lrelu_in_last_layer, self.softmin_in_last_layer)  
             del self.model
             self.model = nn.Sequential(layers_1, layers_2, output_layer)
 
@@ -346,6 +351,7 @@ class Backbone(nn.Module):
             if self.hooks_needed:
                 if len(self.layers_needed) > 1:
                     for layer in self.layers_needed[:-1]:
+                        list(self.model.children())[0][layer+3][-1].marker = self.sigmoid_in_last_layer or self.exclude_relu or self.lrelu_in_last_layer or self.softmin_in_last_layer
                         list(self.model.children())[0][layer+3][-1].register_forward_hook(self.hook_ResNet)
                 self.model[-1].register_forward_hook(self.hook_t) # last layer
 
@@ -385,7 +391,7 @@ class Backbone(nn.Module):
 
 
 class OwnBottleneck(torch.nn.Module):
-    def __init__(self, block_1, block_2, block_3, prune_output_layer, idx_selected, input_size, exclude_relu = False, sigmoid_in_last_layer=False):
+    def __init__(self, block_1, block_2, block_3, prune_output_layer, idx_selected, input_size, exclude_relu = False, sigmoid_in_last_layer=False, lrelu_in_last_layer=False, softmin_in_last_layer=False):
         '''
         just pass OderedDicts, bottleneck like layer is created. For ResNet with Bottlenecks. 
         '''
@@ -399,7 +405,11 @@ class OwnBottleneck(torch.nn.Module):
         if exclude_relu:
             self.output_activation = torch.nn.Identity()#inplace=True)
         elif sigmoid_in_last_layer:
-            self.output_activation = torch.nn.Sigmoid()#inplace=True)
+            self.output_activation = torch.nn.Sigmoid()#, inplace=True)#torch.nn.Sigmoid()#inplace=True)
+        elif lrelu_in_last_layer:
+            self.output_activation = torch.nn.LeakyReLU(0.2, inplace=True)
+        elif softmin_in_last_layer:
+            self.output_activation = torch.nn.Softmin()
         else:
             self.output_activation = torch.nn.ReLU(inplace=True)
         self.idx_selected = idx_selected
@@ -437,7 +447,7 @@ class OwnBottleneck(torch.nn.Module):
         return out
     
 class OwnBasicblock(torch.nn.Module):
-    def __init__(self, block_1, block_2, prune_output_layer, idx_selected, input_size, exclude_relu = False, sigmoid_in_last_layer=False):
+    def __init__(self, block_1, block_2, prune_output_layer, idx_selected, input_size, exclude_relu = False, sigmoid_in_last_layer=False, lrelu_in_last_layer=False, softmin_in_last_layer=False):
         '''
         just pass OderedDicts, bottleneck like layer is created. For ResNet with Basicblocks. 
         '''
@@ -456,7 +466,11 @@ class OwnBasicblock(torch.nn.Module):
         if exclude_relu:
             self.output_activation = torch.nn.Identity()#inplace=True)
         elif sigmoid_in_last_layer:
-            self.output_activation = torch.nn.Sigmoid()#inplace=True)
+            self.output_activation = torch.nn.Sigmoid()#, inplace=True)#torch.nn.Sigmoid()#inplace=True)
+        elif lrelu_in_last_layer:
+            self.output_activation = torch.nn.LeakyReLU(0.2)#, inplace=True)#torch.nn.Sigmoid()#inplace=True)
+        elif softmin_in_last_layer:
+            self.output_activation = torch.nn.Softmin()
         else:
             self.output_activation = torch.nn.ReLU(inplace=True)
         self.idx_selected = idx_selected

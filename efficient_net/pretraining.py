@@ -8,15 +8,16 @@ import copy
 import torch.nn.functional as F
 import numpy as np
 import torch
+import time
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.models import Wide_ResNet101_2_Weights
 from tqdm import tqdm
 if __name__ == '__main__':
-    from common import (get_pdn_small, get_pdn_medium,
+    from common import (get_pdn_small, get_pdn_medium, get_pdn_own, get_pdn_own_2,
                             ImageFolderWithoutTarget, InfiniteDataloader)
 else:   
-    from .common import (get_pdn_small, get_pdn_medium,
+    from .common import (get_pdn_small, get_pdn_medium, get_pdn_own, get_pdn_own_2,
                             ImageFolderWithoutTarget, InfiniteDataloader)
 
 
@@ -26,12 +27,16 @@ def get_argparse():
         description='What the program does',
         epilog='Text at the bottom of help')
     parser.add_argument('-o', '--output_folder',
-                        default='output/pretraining/1/')
+                        default=f'output/pretraining/{int(time.time())}/')
     return parser.parse_args()
 
 # variables
-model_size = 'small'
-imagenet_train_path = './ILSVRC/Data/CLS-LOC/train'
+model_size = 'own_2' # adapted
+if model_size == 'own' or model_size == 'own_2':
+    extractor_image_length = 256
+else:
+    extractor_image_length = 512
+imagenet_train_path = '/mnt/crucial/UNI/IIIT_Muen/MA/ImageNet/ILSVRC/Data/CLS-LOC'#'./ILSVRC/Data/CLS-LOC/train' 
 seed = 42
 on_gpu = torch.cuda.is_available()
 device = 'cuda' if on_gpu else 'cpu'
@@ -40,7 +45,7 @@ device = 'cuda' if on_gpu else 'cpu'
 out_channels = 384
 grayscale_transform = transforms.RandomGrayscale(0.1)  # apply same to both
 extractor_transform = transforms.Compose([
-    transforms.Resize((512, 512)),
+    transforms.Resize((extractor_image_length, extractor_image_length)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
@@ -69,15 +74,25 @@ def main():
     extractor = FeatureExtractor(backbone=backbone,
                                  layers_to_extract_from=['layer2', 'layer3'],
                                  device=device,
-                                 input_shape=(3, 512, 512))
+                                 input_shape=(3, extractor_image_length, extractor_image_length))
+
+    dummy_input = torch.ones((1, 3, extractor_image_length, extractor_image_length))#.cuda()
+    # print('extractor output shape:', extractor.embed(dummy_input).shape)
+    # print('pdn output shape:', get_pdn_own(out_channels).forward(dummy_input).shape)
 
     if model_size == 'small':
         pdn = get_pdn_small(out_channels, padding=True)
     elif model_size == 'medium':
         pdn = get_pdn_medium(out_channels, padding=True)
+    elif model_size == 'own':
+        pdn = get_pdn_own(out_channels, padding=True)
+    elif model_size == 'own_2':
+        pdn = get_pdn_own_2(out_channels, padding=True)
     else:
         raise Exception()
 
+    
+    
     train_set = ImageFolderWithoutTarget(imagenet_train_path,
                                          transform=train_transform)
     train_loader = DataLoader(train_set, batch_size=16, shuffle=True,
@@ -109,19 +124,19 @@ def main():
 
         tqdm_obj.set_description(f'{(loss.item())}')
 
-        if iteration % 10000 == 0:
+        if iteration % 5000 == 0:
             torch.save(pdn,
                        os.path.join(config.output_folder,
-                                    f'teacher_{model_size}_tmp.pth'))
+                                    f'teacher_{model_size}_{int(time.time())}_tmp.pth'))
             torch.save(pdn.state_dict(),
                        os.path.join(config.output_folder,
-                                    f'teacher_{model_size}_tmp_state.pth'))
+                                    f'teacher_{model_size}_{int(time.time())}_tmp_state.pth'))
     torch.save(pdn,
                os.path.join(config.output_folder,
-                            f'teacher_{model_size}_final.pth'))
+                            f'teacher_{model_size}_{int(time.time())}_final.pth'))
     torch.save(pdn.state_dict(),
                os.path.join(config.output_folder,
-                            f'teacher_{model_size}_final_state.pth'))
+                            f'teacher_{model_size}_{int(time.time())}_final_state.pth'))
 
 
 @torch.no_grad()
@@ -243,7 +258,7 @@ class FeatureExtractor(torch.nn.Module):
         # sized features, these are brought into the correct form here.
         features = self.forward_modules["preprocessing"](features)
         features = self.forward_modules["preadapt_aggregator"](features)
-        features = torch.reshape(features, (-1, 64, 64, out_channels))
+        features = torch.reshape(features, (-1, 32, 32, out_channels)) # adapted 
         features = torch.permute(features, (0, 3, 1, 2))
 
         return features

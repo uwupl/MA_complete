@@ -79,7 +79,7 @@ class PatchCore(pl.LightningModule):
         
         # options
         self.category = 'own'#args.category
-        self.load_size = 256#+32#args.load_size
+        self.load_size = 256#args.load_size
         self.input_size = 224#args.input_size
         self.n_neighbors = 9#args.n_neighbors
         self.coreset_sampling_ratio = 0.01#args.coreset_sampling_ratio
@@ -129,6 +129,7 @@ class PatchCore(pl.LightningModule):
         # self.idx_chosen = np.array([], dtype=np.int32)
         self.idx_chosen = None #np.arange(128,dtype=np.int32) # TODO
         self.weight_by_entropy = False
+        self.weight_by_real_entropy = False
         self.reduction_factor = 75
         self.pooling_strategy = ['default']#, 'max_1']#, 'first_trial']#, 'first_trial_max'] # 'first_trial'
         self.cpu_arch = 'x86' # if anything else than x86, qnnpack is used
@@ -168,6 +169,8 @@ class PatchCore(pl.LightningModule):
         self.sparsity = 0.05
         self.exclude_relu = False
         self.sigmoid_in_last_layer = False
+        self.lrelu_in_last_layer = False
+        self.softmin_in_last_layer = False
         self.need_for_own_last_layer = False
         self.category_wise_statistics = False
         if self.category_wise_statistics:
@@ -199,6 +202,7 @@ class PatchCore(pl.LightningModule):
         if self.quantization:
             self = self.half()
         self.pooling_embedding = True
+        self.pool_depth = (False, 64)
         self.pretrain_embed_dimensions = 1024
         self.target_embed_dimensions = 1024
         
@@ -276,6 +280,9 @@ class PatchCore(pl.LightningModule):
         ### temp ###
         # if self.adapt_feature:
         # initialize paths
+        self.std = None
+        self.mean = None
+        self.weights = None
         self.log_path = os.path.join(os.path.dirname(__file__), "results","patchcore", f"{self.group_id}","csv")
         if not os.path.exists(self.log_path):
             os.makedirs(self.log_path)
@@ -294,16 +301,26 @@ class PatchCore(pl.LightningModule):
         
         # self.need_for_own_last_layer = self.need_for_own_last_layer # TODO #,self.prune_output_layer[0] # if relu is last activation, but we want to prune the output layer, we need to set this to true to get own last layer
         if self.cuda_active_training or self.cuda_active:
-            self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, prune_output_layer=(False, []), prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, need_for_own_last_layer=self.need_for_own_last_layer, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).cuda().eval() #, prune_l1_norm=self.prune_l1_unstructured
+            self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, 
+                                     prune_output_layer=(False, []), prune_torch_pruning=self.prune_torch_pruning, 
+                                     prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, 
+                                     sigmoid_in_last_layer = self.sigmoid_in_last_layer, lrelu_in_last_layer=self.lrelu_in_last_layer, softmin_in_last_layer=self.softmin_in_last_layer,
+                                     need_for_own_last_layer=self.need_for_own_last_layer, 
+                                     quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).cuda().eval() #, prune_l1_norm=self.prune_l1_unstructured
             if self.quantize_qint8:
                 raise NotImplementedError('qint8 quantization for GPU not implemented')
                 # self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=self.calibration_dataset ,category=self.category, cpu_arch=self.cpu_arch, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
             
             self.dummy_input = torch.randn(1, 3, self.input_size, self.input_size).cuda()
         else:
-            self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, prune_output_layer=(False, []), prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, need_for_own_last_layer=self.need_for_own_last_layer, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).eval() # prune_l1_norm=self.prune_l1_unstructured,
+            self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, 
+                                     prune_output_layer=(False, []), prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, 
+                                     exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, lrelu_in_last_layer=self.lrelu_in_last_layer,  softmin_in_last_layer=self.softmin_in_last_layer,
+                                     need_for_own_last_layer=self.need_for_own_last_layer, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).eval() # prune_l1_norm=self.prune_l1_unstructured,
             if self.quantize_qint8:
-                self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=self.calibration_dataset if not raspberry_pi else None, category=self.category, cpu_arch=self.cpu_arch, num_images=self.num_images_calib, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
+                self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=self.calibration_dataset if not raspberry_pi else None, 
+                                                          exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, lrelu_in_last_layer=self.lrelu_in_last_layer,  softmin_in_last_layer=self.softmin_in_last_layer,
+                                                          category=self.category, cpu_arch=self.cpu_arch, num_images=self.num_images_calib, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
                 if raspberry_pi:
                     # load pretrained, quantized and calibrated models; only RN18 and RN34 for now
                     file_name = f'{self.backbone_id}_layers_{self.layers_needed}_qint8_qnnpack_calib_random.pth'
@@ -419,9 +436,16 @@ class PatchCore(pl.LightningModule):
             else: # in this case we have to create an instance of the model first and load the state dict afterwards to get the same configuration as during training
                  
                 # args have to match training!
-                self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, prune_output_layer=self.prune_output_layer, prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, need_for_own_last_layer=self.need_for_own_last_layer, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).eval() 
+                self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, 
+                                         prune_output_layer=self.prune_output_layer, prune_torch_pruning=self.prune_torch_pruning, 
+                                         prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, 
+                                         sigmoid_in_last_layer = self.sigmoid_in_last_layer, lrelu_in_last_layer=self.lrelu_in_last_layer,  softmin_in_last_layer=self.softmin_in_last_layer,
+                                         need_for_own_last_layer=self.need_for_own_last_layer, 
+                                         quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).eval() 
                 if self.quantize_qint8:
-                    self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=None, category=self.category, cpu_arch=self.cpu_arch, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
+                    self.backbone = quantize_model_into_qint8(model=self.backbone, layers_needed=self.layers_needed, calibrate=None, 
+                                                              exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, lrelu_in_last_layer=self.lrelu_in_last_layer,  softmin_in_last_layer=self.softmin_in_last_layer,
+                                                              category=self.category, cpu_arch=self.cpu_arch, dataset_path=r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/")
                     if not raspberry_pi:
                         self.backbone.load_state_dict(torch.load(os.path.join(self.embedding_dir_path,'backbone.pth'), map_location=torch.device('cpu')))
                     else:
@@ -430,7 +454,7 @@ class PatchCore(pl.LightningModule):
                         path_to_model = os.path.join('/home/jo/MA/code/MA_complete/quantized_models', file_name)
                         self.backbone.load_state_dict(torch.load(path_to_model, map_location=torch.device('cpu')))                
         self.backbone.eval()
-        # print(self.backbone)
+        print(self.backbone)
         if (not self.pooling_embedding) or self.patchcore_scorer:
             self.patch_size = 3
             self.patch_stride = 1
@@ -521,31 +545,35 @@ class PatchCore(pl.LightningModule):
             self.features_to_store.append(features[0].detach().cpu())        
         if not self.backbone_id.__contains__('pdn'):
             if self.pooling_embedding:
-                embeddings = []
-                for k, feature in enumerate(features):
-                    if type(self.pooling_strategy) == list:
-                        # print('1: ', feature.shape)
-                        # if self.quantize_qint8:
-                        #     feature = feature[None,:]
-                        for strategy in self.pooling_strategy:
-                            # print('hallihallo')
-                            # print('2: ', feature.shape)
-                            pooled_feature = adaptive_pooling(feature, strategy)
-                            embeddings.append(pooled_feature)
-                    else:
-                        pooled_feature = adaptive_pooling(feature, self.pooling_strategy)
-                        embeddings.append(pooled_feature)
-
-                embedding = embedding_concat_frame(embeddings=embeddings, cuda_active=self.cuda_active) # shape (batch, 448, 16, 16) --> default
-                reshaped_embeddings = reshape_embedding(np.array(embedding))
+                # embeddings = []
+                # for k, feature in enumerate(features):
+                    # if type(self.pooling_strategy) == list:
+                    #     # print('1: ', feature.shape)
+                    #     # if self.quantize_qint8:
+                    #     #     feature = feature[None,:]
+                    #     for strategy in self.pooling_strategy:
+                    #         # print('hallihallo')
+                    #         # print('2: ', feature.shape)
+                    #         pooled_feature = adaptive_pooling(feature, strategy)
+                    #         embeddings.append(pooled_feature)
+                    # else:
+                    #     pooled_feature = adaptive_pooling(feature, self.pooling_strategy)
+                    #     embeddings.append(pooled_feature)
+                embeddings = self.feature_embedding(features, True, 1)
+                if batch_idx == 0:
+                    self.embedding_np = embeddings#.detach().cpu().numpy()
+                else:
+                    self.embedding_np = np.vstack((self.embedding_np, embeddings))
+                # embedding = embedding_concat_frame(embeddings=embeddings, cuda_active=self.cuda_active) # shape (batch, 448, 16, 16) --> default
+                # reshaped_embeddings = reshape_embedding(np.array(embedding))
                 # if self.adapt_feature: # feature adaptor is trained after feauters are extracted by regular backbone
                     # reshaped_embeddings = self.feature_adaptor(torch.from_numpy(reshaped_embeddings)).detach().numpy()
-                if batch_idx == int(0):
-                    self.embedding_np = reshaped_embeddings
-                else:
+                # if batch_idx == int(0):
+                    # self.embedding_np = reshaped_embeddings
+                # else:
                     # print('lo')
                     # print(embedding.shape)
-                    self.embedding_np = np.append(self.embedding_np, reshaped_embeddings, axis=0)#.extend(reshape_embedding(np.array(embedding)))
+                    # self.embedding_np = np.append(self.embedding_np, reshaped_embeddings, axis=0)#.extend(reshape_embedding(np.array(embedding)))
             
                     ### temp ###
             else:
@@ -585,6 +613,7 @@ class PatchCore(pl.LightningModule):
             self.mean = np.mean(total_embeddings, axis=0)
             self.std = np.std(total_embeddings, axis=0)
             self.std = self.std + 5e-2*np.mean(self.std) # add 5% of mean to std to avoid division by zero
+            print('std: ', self.std.shape)
             total_embeddings = (total_embeddings-self.mean)/self.std
             # total_embeddings[:,self.std<1e-15] = 0.0
         
@@ -620,7 +649,18 @@ class PatchCore(pl.LightningModule):
             # self.weights = softmax(entropy) * total_embeddings.shape[1]
             self.weights = entropy / np.sum(entropy) * total_embeddings.shape[1]
             total_embeddings = np.multiply(total_embeddings, self.weights)
-        
+        if self.weight_by_real_entropy:
+            from scipy.stats import entropy
+            from scipy.special import softmax
+            total_embeddings_copy = total_embeddings.copy()
+            num_bins = 100
+            entropy_per_channel = np.zeros(total_embeddings.shape[1])
+            for k in range(total_embeddings.shape[1]):
+                entropy_per_channel[k] = entropy(np.histogram(total_embeddings_copy[:,k], bins=num_bins, density=True)[0])
+            self.weights = np.float32(softmax(entropy_per_channel)*total_embeddings.shape[1])
+            total_embeddings = np.multiply(total_embeddings, self.weights)
+            # for k in range(total_embeddings.shape[1]):
+                # total_embeddings_copy[:,k] = np.histogram(total_embeddings_copy[:,k], bins=num_bins, density=True)
         if (self.reduce_via_entropy or self.reduce_via_entropy_normed) and self.normalize and not self.reduce_via_std:
             # self.idx_chosen = np.unique(self.idx_chosen)
             self.std = np.take(self.std, self.idx_chosen)#, axis=0)
@@ -648,7 +688,12 @@ class PatchCore(pl.LightningModule):
             else:
                 device = 'cuda' if next(self.backbone.parameters()).is_cuda else 'cpu'
                 self.prune_output_layer = (True, self.idx_chosen)
-                self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, prune_output_layer=self.prune_output_layer, prune_torch_pruning=self.prune_torch_pruning, prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, sigmoid_in_last_layer = self.sigmoid_in_last_layer, need_for_own_last_layer=True, quantize_qint8_prepared=self.quantize_qint8, quantize_qint8_torchvision=self.quantize_qint8_torchvision).to(device=device).eval() # prune_l1_norm=self.prune_l1_unstructured,
+                self.backbone = Backbone(model_id=self.backbone_id, layers_needed=self.layers_needed, layer_cut=self.layer_cut, 
+                                         prune_output_layer=self.prune_output_layer, prune_torch_pruning=self.prune_torch_pruning, 
+                                         prune_l1_norm=self.prune_l1_unstructured, exclude_relu=self.exclude_relu, 
+                                         sigmoid_in_last_layer = self.sigmoid_in_last_layer, lrelu_in_last_layer=self.lrelu_in_last_layer,   softmin_in_last_layer=self.softmin_in_last_layer,
+                                         need_for_own_last_layer=True, quantize_qint8_prepared=self.quantize_qint8, 
+                                         quantize_qint8_torchvision=self.quantize_qint8_torchvision).to(device=device).eval() # prune_l1_norm=self.prune_l1_unstructured,
             
             features = self.feature_extraction(self.dummy_input.to(device=device))
             if self.pooling_embedding:
@@ -1160,6 +1205,9 @@ class PatchCore(pl.LightningModule):
         
         concatenated_features = embedding_concat_frame(embeddings=selected_features, cuda_active=self.cuda_active)
         
+        # if self.pool_depth[0]:
+            # print
+        
         if batch_size_1:
             flattened_features = np.array(reshape_embedding(np.array(concatenated_features)))
         else:
@@ -1171,7 +1219,7 @@ class PatchCore(pl.LightningModule):
         if self.normalize and self.mean is not None:
             flattened_features = (flattened_features - self.mean) / self.std
         
-        if self.weight_by_entropy and self.weights is not None:
+        if (self.weight_by_entropy or self.weight_by_real_entropy) and self.weights is not None:
             flattened_features = np.multiply(flattened_features, self.weights)
             
         if self.adapt_feature and self.feature_adaptor is not None:
@@ -1179,6 +1227,10 @@ class PatchCore(pl.LightningModule):
             flattened_features = self.feature_adaptor(torch_features).detach().cpu().numpy()
         if self.own_knn:
             flattened_features = torch.from_numpy(flattened_features)#.to(device='cuda:0' if self.cuda_active and torch.cuda.is_available() else 'cpu')
+        
+        if self.pool_depth[0]:
+            pooler = torch.nn.AdaptiveAvgPool1d(self.pool_depth[1])
+            flattened_features = pooler(torch.from_numpy(flattened_features)).cpu().numpy()
         
         return flattened_features
 
@@ -1522,14 +1574,14 @@ if __name__ == '__main__':
     
     model = PatchCore()#args=args)
     # model.test_dataloader()
-    model.backbone_id = 'RN18'
+    model.backbone_id = 'RN34'
     model.layers_needed = [2,3]
     model.layer_cut = True
     # score calc
     model.adapted_score_calc = False
     model.n_neighbors = 4
     model.n_next_patches = 16
-    model.patchcore_scorer = False
+    model.patchcore_scorer = True
     # devices
     model.cuda_active = False
     model.cuda_active_training = False
@@ -1540,17 +1592,19 @@ if __name__ == '__main__':
     # subsampling
     model.coreset_sampling_method = 'patchcore_greedy_approx'#'k_center_greedy'#
     model.specific_number_of_examples = 1000
-    model.multiple_coresets = [True, 3]
+    model.multiple_coresets = [True, 5]
     # search
-    model.own_knn = True
+    model.own_knn = False
     model.metric_id = 0
     model.faiss_standard = False
-    model.patchcore_score_patches = False
+    model.patchcore_score_patches = True
     # pooling
     model.pooling_embedding = True
-    
+    model.measure_inference =False
     # general settings
     model.category = 'toothbrush'
+    model.quantize_qint8 = True
+    model.need_for_own_last_layer = False
     # model.adapt_feature = False
     # # model.group_id = 'RN18_L2_non_q'
     # # shrinking_factor=0.3, std_factor=0.01, batch_size=32, num_workers=12, lr=0.0005, epochs=12, 
@@ -1561,15 +1615,19 @@ if __name__ == '__main__':
     # model.reduce_via_entropy_normed = True
     # model.reduction_factor = 5
     # model.normalize = False
-    # model.weight_by_entropy = True
+    model.weight_by_real_entropy = False
     
     # temp
     # model.reduce_via_entropy_normed = True
     # model.reduction_factor = 50
     # # model.need_for_own_last_layer = True
     # model.sigmoid_in_last_layer = False
-    # model.need_for_own_last_layer = True
+    model.need_for_own_last_layer = False 
+    model.exclude_relu = True
+    model.sigmoid_in_last_layer = False
+    model.normalize = False
     # model.prune_output_layer = [True, None]
+    model.save_embeddings = True
     
     one_run_of_model(model, train_and_test)
     # model.pooling_embedding = False

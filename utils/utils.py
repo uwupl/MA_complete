@@ -366,9 +366,10 @@ def plot_results(labels, feature_extraction, embedding, search, calc_distances, 
         ax.set_title(title)#, fontsize=10*font_scaler)
         ax.set_xticks(x, labels)
         ax.legend()
-        ax.bar_label(rects_1, padding=3,fmt=f'%1{delimiter}1f')
-        ax.bar_label(rects_2, padding=3,fmt=f'%1{delimiter}1f')
+        ax.bar_label(rects_1, padding=3,fmt=own_formatter_2f)
+        ax.bar_label(rects_2, padding=3,fmt=own_formatter_2f)
         ax.set_yticks([50,60,70,80,90,100])
+        ax.set_ylim([50,105])
     
     fig.tight_layout()    
     current_font_size = mpl.rcParams['font.size']

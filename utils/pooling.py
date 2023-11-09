@@ -63,7 +63,18 @@ def adaptive_pooling(feature, pooling_strategy):
         pool = torch.nn.MaxPool2d(9, 2, 4)
     elif pooling_strategy.__contains__('max934'):
         pool = torch.nn.MaxPool2d(9, 3, 4)
-        
+    elif pooling_strategy.__contains__('ada_7'):
+        pool = torch.nn.AdaptiveAvgPool2d(7)
+    elif pooling_strategy.__contains__('ada_14'):
+        pool = torch.nn.AdaptiveAvgPool2d(14)
+    elif pooling_strategy.__contains__('ada_28'):
+        pool = torch.nn.AdaptiveAvgPool2d(28)
+    elif pooling_strategy.__contains__('ada_10'):
+        pool = torch.nn.AdaptiveAvgPool2d(10)
+    elif pooling_strategy.__contains__('ada_5'):
+        pool = torch.nn.AdaptiveAvgPool2d(5)    
+    
+    
     
     elif pooling_strategy.__contains__('first_trial'):
         # everything to 7x7 with 224 input size

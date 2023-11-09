@@ -28,7 +28,7 @@ def fix_xticklabels(str_total):
     # print(str_total_new)
     return str_total_new
 
-def add_variables(str_total, width = 0.8, heigth = 0.6, anchorx = 1.10):
+def add_variables(str_total, width = 0.8, heigth = 0.48, anchorx = 1.10):
     # initialize vairaibles
     to_add = '  \n  \\newcommand{\widthplot}{'+str(width)+'}\n  \\newcommand{\heightplot}{'+str(heigth)+'}\n  \\newcommand{\\anchorx}{'+str(anchorx)+'}\n'
     str_total_new = str_total.replace('begin{tikzpicture}', 'begin{tikzpicture}' + to_add, 1)
@@ -44,11 +44,15 @@ def fix_anchor(str_total):
     to_replace = str_total.split('legend style={')[1].split('\n}')[0]
     to_replace_2 = to_replace.split('anchor=')[1].split('},')[0]
     to_replace_3 = to_replace.split('at=')[1].split('},')[0]
-    replaced = to_replace.replace(to_replace_2, 'south west', 1)
+    replaced = to_replace.replace(to_replace_2, 'west', 1)
     replaced = replaced.replace(to_replace_3, '{(\\anchorx,0.00)', 1)
     str_total_new = str_total.replace(to_replace, replaced, 1)
+    to_replace = 'south west'
+    to_insert = ',\n  text width=2.25cm'
+    str_total_new = str_total_new.replace(to_replace, to_replace + to_insert, 1)
+    str_total_new
     # amchor 2
-    to_insert = '\nlegend cell align={left},\nlegend style={\n  fill opacity=0.8,\n  draw opacity=1,\n  text opacity=1,\n  at={(\\anchorx,1.00)},\n  anchor=north west\n},'
+    to_insert = '\nlegend cell align={left},\nlegend style={\n  fill opacity=0.8,\n  draw opacity=1,\n  text opacity=1,\n  at={(\\anchorx,1.00)},\n  anchor=north west,\n  text width=2.25cm},'
     to_replace = 'height=\heightplot\\textwidth,\naxis y line=right,'
     str_total_new = str_total_new.replace(to_replace, to_replace + to_insert, 1)
     return str_total_new
@@ -75,22 +79,31 @@ def add_annotation(str_total, input_backbone_name, input_device_name):
     str_total_new = str_total.replace(to_replace, to_replace + to_insert, 1)
     return str_total_new
 
+def add_100_line(str_total):
+    to_replace = '\end{axis}\n\n\end{tikzpicture}'
+    to_insert = '\n\\draw[black, dashed] (axis cs:-1,100) -- (axis cs:5,100);'
+    str_total_new = str_total.replace(to_replace, to_insert + to_replace, 1)
+    return str_total_new
 if __name__ == '__main__':
     print('Start')
     
-    filepath = os.path.join(os.path.dirname(__file__), 'test2new.tex')
+    filepath = os.path.join(os.path.dirname(__file__), 'slideactivrn18j23.tex')
     str_total = import_file_as_str(filepath)
     # print(str_total[:-100])
     
     # str_total = fix_xticklabels(str_total)
     # str_total = add_variables(str_total)
     # str_total = fix_anchor(str_total)
-    # str_total = change_scale(str_total, 1.0)
+    str_total = change_scale(str_total, 0.6)
     # str_total = adjust_offset_bar_label(str_total, (0,-2))    
+    str_total = add_100_line(str_total)
     
-    
-    # print(str_total)
-    str_total = add_annotation(str_total, 'ResNet-50', 'CPU')
+    print(str_total)
+    # str_total = add_annotation(str_total, 'ResNet-50', 'CPU')
     filepath = filepath.replace('.tex', '.tex')
     save_str_as_file(filepath, str_total)
-    
+
+
+# xticklabels={
+#  {\num{0,1}\%},{\#1000\\ MW $\approx \num{0,6}$\%},{1\%},{10\%},{100\%}
+#  },

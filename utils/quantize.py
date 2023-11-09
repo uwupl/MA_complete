@@ -24,7 +24,7 @@ else:
 
 
 class QuantizedModel(nn.Module):
-    def __init__(self, model, layers_needed=None, feature_dim=None):
+    def __init__(self, model, layers_needed=None, feature_dim=None, activation_funciton=torch.nn.Identity()):
         super(QuantizedModel, self).__init__()
         # self.quant = torch.quantization.QuantStub()
         self.model = nn.Sequential(
@@ -32,12 +32,13 @@ class QuantizedModel(nn.Module):
             model,
             torch.ao.quantization.DeQuantStub()
         )
+        self.activation_function = activation_funciton
         self.layers_needed = layers_needed
         if self.layers_needed is not None:
-            for layer in self.layers_needed:
-                self.model[1][layer+3][-1].register_forward_hook(self.hook_q)
-        else:
-            self.model[-2][-1].register_forward_hook(self.hook_q)
+            for layer in self.layers_needed[:-1]:
+                self.model[1][0][layer+3][-1].register_forward_hook(self.hook_inter)
+        # else:
+        self.model[-2][-1].register_forward_hook(self.hook_end)
         self.feature_dim = feature_dim
 
     def init_features(self):
@@ -48,9 +49,15 @@ class QuantizedModel(nn.Module):
         _ = self.model(x_t)
         return self.features
     
-    def hook_q(self, module, input, output):
+    def hook_end(self, module, input, output):
         output = output.dequantize()
         self.features.append(output)
+        
+    def hook_inter(self, module, input, output):
+        out = output.dequantize()        
+        out = self.activation_function(out)
+        self.features.append(out)
+        
 
 def generate_fuse_list(model):
     fuse_list = []
@@ -107,7 +114,9 @@ def calibrate_model(model, loader, device=torch.device("cpu:0")):
             # print(x.shape)
             _ = model(x)
         
-def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, category = 'own', cpu_arch = 'x86', num_images=100, dataset_path = r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/"):
+def quantize_model_into_qint8(model, layers_needed = None, calibrate = None,
+                              exclude_relu = False, sigmoid_in_last_layer = False, lrelu_in_last_layer = False, softmin_in_last_layer = False,
+                              category = 'own', num_images=100, dataset_path = r"/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD/"):
     '''
     Quantizes a model into quint8. Utilizes layer fusion and calibration.
     
@@ -118,7 +127,18 @@ def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, cat
         - str(imagenet): calibrate with random subset (size 5000, subject to change) of Imagenet dataset (validation data of Imagenet)
         - str(random): calibrate with random images uniformly distributed in [0, 255]
     '''
-    st = perf_counter()    
+    st = perf_counter()
+    if exclude_relu:
+        activation_function = torch.nn.Identity()
+    elif sigmoid_in_last_layer:
+        activation_function = torch.nn.Sigmoid()
+    elif lrelu_in_last_layer:
+        activation_function = torch.nn.LeakyReLU(0.2)
+    elif softmin_in_last_layer:
+        activation_function = torch.nn.Softmin()
+    else:
+        activation_function = torch.nn.ReLU()
+        
     print('\nQuantizing model into qint8')
     # load model
     fused_model = model.model.eval()
@@ -130,7 +150,7 @@ def quantize_model_into_qint8(model, layers_needed = None, calibrate = None, cat
     # a = fused_model
     
     # add quantization layers
-    b = QuantizedModel(a, layers_needed=layers_needed, feature_dim = model.feature_dim)
+    b = QuantizedModel(a, layers_needed=layers_needed, feature_dim = model.feature_dim, activation_funciton=activation_function)
     
     # set config for architecture
     b.qconfig = torch.quantization.get_default_qconfig('fbgemm' if not raspberry_pi else 'qnnpack')#cpu_arch) # 'qnnpack','x86'

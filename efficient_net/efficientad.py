@@ -18,7 +18,7 @@ from sklearn.metrics import roc_auc_score
 import sys
 sys.path.append('/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete')
 # from path_definitions import MVTEC_DIR
-from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
+from common import get_autoencoder, get_pdn_small, get_pdn_medium, get_autoencoder_own, get_pdn_own, get_pdn_own_2,\
     ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 # else:
 #     from .common import get_autoencoder, get_pdn_small, get_pdn_medium, \
@@ -62,8 +62,8 @@ class config_helper():
         self.dataset = 'mvtec_ad'
         self.subdataset = 'zipper'
         self.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad'
-        self.model_size = 'small'
-        self.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
+        self.model_size = 'small'#'own'#_2'
+        self.weights = ''# gets overwritten anyway /mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/output/pretraining/1699000941/teacher_own_tmp_state.pth'#'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
         self.imagenet_train_path = 'none'
         self.mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
         self.mvtec_loco_path = './mvtec_loco_anomaly_detection' # not used
@@ -106,6 +106,8 @@ class config_helper():
         else:
             self.output_dir = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad' # TODO add config.subdataset
             self.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/efficient_net/models/teacher_small.pth'
+            # self.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/output/pretraining/1699000941/teacher_own_tmp_state.pth'
+            # self.weights = '/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/output/pretraining/1699279527/teacher_own_2_1699285493_tmp_state.pth'
             self.mvtec_ad_path = '/mnt/crucial/UNI/IIIT_Muen/MA/MVTechAD'
             self.model_base_dir = f'/mnt/crucial/UNI/IIIT_Muen/MA/code/productive/MA_complete/results/efficientned_ad/{self.run_id}/models' # TODO: add config.subdataset
             self.backend = 'fbgemm'#x86'
@@ -178,9 +180,10 @@ def main():
     else:
         raise Exception('Unknown config.dataset')
 
-    cats = ['bottle', 'cable', 'capsule', 'carpet']#, 'grid', 'own',
-            # 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw',
+    # cats =['bottle', 'cable', 'capsule', 'carpet', 'grid', 'own',
+        #   'hazelnut', 'leather', 'metal_nut', 'pill', 'screw',
             # 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+    cats = ['screw', 'leather', 'carpet', 'pill', 'capsule']
     additional_base_points = [0, 20, 100, 500, 1000, 2000, 3000, 4000, 7500]
     
     for k, cat in enumerate(cats):
@@ -281,11 +284,20 @@ def main():
         elif config.model_size == 'medium':
             teacher = get_pdn_medium(config.out_channels)
             student = get_pdn_medium(2 * config.out_channels)
+        elif config.model_size == 'own':
+            teacher = get_pdn_own(config.out_channels)
+            student = get_pdn_own(2 * config.out_channels)
+        elif config.model_size == 'own_2':
+            teacher = get_pdn_own_2(config.out_channels)
+            student = get_pdn_own_2(2 * config.out_channels)
         else:
             raise Exception('Unknown config.model_size')
         state_dict = torch.load(config.weights, map_location='cpu')
         teacher.load_state_dict(state_dict)
-        autoencoder = get_autoencoder(config.out_channels)
+        if not (config.model_size == 'own' or config.model_size == 'own_2'):
+            autoencoder = get_autoencoder(config.out_channels)
+        else:
+            autoencoder = get_autoencoder_own(config.out_channels)
 
         # teacher frozen
         teacher.eval()
