@@ -115,6 +115,10 @@ class PatchCore(pl.LightningModule):
         self.reduce_via_std = False
         self.reduce_via_entropy = False
         self.reduce_via_entropy_normed = False
+        self.reduce_via_real_entropy = False
+        self.reduce_via_pca = False
+        self.pool_depth = False
+        self.pca = None
         self.pretrain_for_channel_selection = False
         self.iterative_pruning = (False, 0)
         self.quantize_model_with_nni = False
@@ -202,7 +206,7 @@ class PatchCore(pl.LightningModule):
         if self.quantization:
             self = self.half()
         self.pooling_embedding = True
-        self.pool_depth = (False, 64)
+        
         self.pretrain_embed_dimensions = 1024
         self.target_embed_dimensions = 1024
         
@@ -640,6 +644,17 @@ class PatchCore(pl.LightningModule):
             # total_embeddings = np.take(total_embeddings, self.idx_chosen, axis=1)
             idx_chosen_set = idx_chosen_set.intersection(set(self.idx_chosen))
             self.idx_chosen = np.array(list(idx_chosen_set), dtype=np.int32)
+        if self.reduce_via_real_entropy:
+            from scipy.stats import entropy
+            percentile_entropy = 100-self.reduction_factor
+            total_embeddings_copy = total_embeddings.copy()
+            num_bins = 100
+            entropy_per_channel = np.zeros(total_embeddings.shape[1])
+            for k in range(total_embeddings.shape[1]):
+                entropy_per_channel[k] = entropy(np.histogram(total_embeddings_copy[:,k], bins=num_bins, density=True)[0])
+            idx_chosen_set = set(np.argwhere(entropy_per_channel>np.percentile(entropy_per_channel, percentile_entropy))[:,0])
+            idx_chosen_set = idx_chosen_set.intersection(set(self.idx_chosen))
+            self.idx_chosen = np.array(list(idx_chosen_set), dtype=np.int32)
         
         if self.weight_by_entropy: # since we saw TODO
             total_embeddings_copy = total_embeddings.copy()
@@ -661,11 +676,18 @@ class PatchCore(pl.LightningModule):
             total_embeddings = np.multiply(total_embeddings, self.weights)
             # for k in range(total_embeddings.shape[1]):
                 # total_embeddings_copy[:,k] = np.histogram(total_embeddings_copy[:,k], bins=num_bins, density=True)
-        if (self.reduce_via_entropy or self.reduce_via_entropy_normed) and self.normalize and not self.reduce_via_std:
+        if self.reduce_via_pca:
+            from sklearn.decomposition import PCA
+            n_components = int(total_embeddings.shape[1] * self.reduction_factor / 100)
+            self.pca = PCA(n_components=n_components)
+            self.pca.fit(total_embeddings)
+            total_embeddings = self.pca.transform(total_embeddings)
+
+        if (self.reduce_via_entropy or self.reduce_via_entropy_normed or self.reduce_via_real_entropy) and self.normalize and not self.reduce_via_std:
             # self.idx_chosen = np.unique(self.idx_chosen)
             self.std = np.take(self.std, self.idx_chosen)#, axis=0)
             self.mean = np.take(self.mean, self.idx_chosen)#, axis=0)
-        if self.reduce_via_entropy or self.reduce_via_entropy_normed or self.reduce_via_std:
+        if self.reduce_via_entropy or self.reduce_via_entropy_normed or self.reduce_via_std or self.reduce_via_real_entropy:
             # self.idx_chosen = np.unique(self.idx_chosen)
             print('Number of channels chosen: ', len(self.idx_chosen))
             total_embeddings = np.take(total_embeddings, self.idx_chosen, axis=1)
@@ -753,7 +775,7 @@ class PatchCore(pl.LightningModule):
         
         if self.adapt_feature:
             if self.feature_adaptor_dict is None:
-                self.feature_adaptor = get_feature_adaptor(total_embeddings, shrinking_factor=0.3, std_factor=0.01, batch_size=32, num_workers=12, lr=0.0005, epochs=12, use_cuda=torch.cuda.is_available()) # default arguments are used
+                self.feature_adaptor = get_feature_adaptor(total_embeddings, shrinking_factor=float(self.reduction_factor/100), std_factor=0.01, batch_size=32, num_workers=12, lr=0.0005, epochs=12, use_cuda=torch.cuda.is_available()) # default arguments are used
             else:
                 self.feature_adaptor = get_feature_adaptor(total_embeddings, **self.feature_adaptor_dict)
             # todo device check
@@ -1213,7 +1235,7 @@ class PatchCore(pl.LightningModule):
         else:
             flattened_features = np.array([np.array(reshape_embedding(np.array(concatenated_features[k,...].unsqueeze(0)))) for k in range(batch_size)])
         
-        if ((self.reduce_via_std or self.reduce_via_entropy or self.reduce_via_entropy_normed) and not self.prune_output_layer[0]) and self.idx_chosen is not None:
+        if ((self.reduce_via_std or self.reduce_via_entropy or self.reduce_via_entropy_normed or self.reduce_via_real_entropy) and not self.prune_output_layer[0]) and self.idx_chosen is not None:
             flattened_features = np.take(flattened_features, self.idx_chosen, axis=1)#indices=#[:,self.idx_with_high_std]
         
         if self.normalize and self.mean is not None:
@@ -1228,8 +1250,12 @@ class PatchCore(pl.LightningModule):
         if self.own_knn:
             flattened_features = torch.from_numpy(flattened_features)#.to(device='cuda:0' if self.cuda_active and torch.cuda.is_available() else 'cpu')
         
-        if self.pool_depth[0]:
-            pooler = torch.nn.AdaptiveAvgPool1d(self.pool_depth[1])
+        if self.reduce_via_pca and self.pca is not None:
+            flattened_features = self.pca.transform(flattened_features)
+        
+        if self.pool_depth:
+            n_components = int(flattened_features.shape[1]*self.reduction_factor/100)
+            pooler = torch.nn.AdaptiveAvgPool1d(n_components)
             flattened_features = pooler(torch.from_numpy(flattened_features)).cpu().numpy()
         
         return flattened_features
@@ -1449,7 +1475,7 @@ class PatchCore(pl.LightningModule):
         # self.log_dict(values) # consumes a lot of storage!
         # own logging
         self.feature_adaptor = None
-        
+        self.pca = None
         
         if self.measure_inference:
             file_path = os.path.join(self.log_path, self.latences_filename)
@@ -1490,6 +1516,7 @@ class PatchCore(pl.LightningModule):
                     'reduce_via_entropy': self.reduce_via_entropy,
                     'quantize_model_with_nni': self.quantize_model_with_nni,
                     'reduce_via_entropy_normed': self.reduce_via_entropy_normed,
+                    'reduce_via_real_entropy': self.reduce_via_real_entropy,
                     'reduce_factor': self.reduction_factor,
                     'coreset_size': self.embedding_coreset.shape[0] if not self.multiple_coresets[0] else self.embedding_coreset.shape[1],
                     'resulting_feature_length': self.embedding_coreset.shape[1] if not self.multiple_coresets[0] else self.embedding_coreset.shape[2],
@@ -1575,7 +1602,7 @@ if __name__ == '__main__':
     model = PatchCore()#args=args)
     # model.test_dataloader()
     model.backbone_id = 'RN34'
-    model.layers_needed = [2,3]
+    model.layers_needed = [2]
     model.layer_cut = True
     # score calc
     model.adapted_score_calc = False
@@ -1603,8 +1630,10 @@ if __name__ == '__main__':
     model.measure_inference =False
     # general settings
     model.category = 'toothbrush'
-    model.quantize_qint8 = True
+    model.quantize_qint8 = False
     model.need_for_own_last_layer = False
+    model.reduce_via_pca = True
+    model.reduction_factor = 80
     # model.adapt_feature = False
     # # model.group_id = 'RN18_L2_non_q'
     # # shrinking_factor=0.3, std_factor=0.01, batch_size=32, num_workers=12, lr=0.0005, epochs=12, 
@@ -1623,12 +1652,15 @@ if __name__ == '__main__':
     # # model.need_for_own_last_layer = True
     # model.sigmoid_in_last_layer = False
     model.need_for_own_last_layer = False 
-    model.exclude_relu = True
+    model.exclude_relu = False
     model.sigmoid_in_last_layer = False
     model.normalize = False
     # model.prune_output_layer = [True, None]
-    model.save_embeddings = True
+    model.save_embeddings = False
     
+    one_run_of_model(model, train_and_test)
+    
+    model.reduction_factor = 50
     one_run_of_model(model, train_and_test)
     # model.pooling_embedding = False
     # one_run_of_model(model, train_and_test)

@@ -39,7 +39,7 @@ die Funktionsweise der Methode PatchCore.\
     \caption{Skizze zur Funktionsweise von PatchCore. \cite{patchcore}} 
     \label{fig:PatchCore}
 \end{figure}
-\subsection{Erzeugen der Patch Features}\label{subsec:ErzeugenDerPatchFeatures}
+\subsection{Erzeugen der Patch Features}\label{subsec:ErzeugenDerPatchFeaturesPatchCore}
 Zunächst werden einige Notationen definiert, die im Folgenden verwendet werden und in analoger Form auch anderen Stellen in dieser Arbeit verwendet werden.\
 So wird die Menge aller Trainingsbilder als $\mathcal{X}_{train}$ bezeichnet. Die Menge aller Testbilder als $\mathcal{X}_{test}$.\
 Für den Trainingsdatensatz gilt im Sinne der Unüberwachtheit (TODO), dass es sich um ausschließlich nominale Samples handelt. Im Testdatensatz können sowohl nominale als auch anomale Samples enthalten sein.\
@@ -520,7 +520,7 @@ Für die weitere Untersuchung werden deshalb die folgenden Backbones verwendet:
     \item ResNet 34 mit $j=\{2,3\}$, \num{97,7}\% AOROC MVTecAD, \num{94,8}\% AUROC Granulat, \num{21,5}\si{\milli\second} je Bild
 \end{itemize}
 Die Angaben zu den Laufzeiten beziehen sich, wie alle Angaben diesbezüglich, auf eine Ausführung auf der Desktop CPU. \\
-\subsection{Einbettungsprozess}\label{subsubsec:embedding-patchcore}
+\subsection{Adaption des Einbettungsprozesses}\label{subsec:embedding-patchcore}
 Es kann in \ref{fig:patchcorecdist} bereits gesehen werden, dass ein wesentlicher Teil der Laufzeit für den Prozess der Einbettung der bereits extrahierten Feature Maps \ 
 verwendet wird und das es dafür Abhilfe gibt. Während die Varianten (3) und (4) knapp $\num{40}\si{\milli\second}$ benötigen, um die Feature einzubetten, \
 ist die Variante, die im Folgenden vorgestellt wird, um ein Vielfaches schneller. Die Laufzeit hängt dabei zwar von verschiedenen Faktoren ab, wie zum Beispiel den \
@@ -616,7 +616,7 @@ verdoppetl, was wiederum einen negativen Einfluss auf die Laufzeit der NN-Suche 
     \label{fig:poolingren18combi}
 \end{figure}
 Insgesamt erweist sich das Ansatz als nicht zielführend. Die Kombination von Pooling Operationen ist nicht in der Lage, die AUROC Werte auf MVTecAD zu verbessern.\
-\subsubsection{Adaptives Pooling}
+\subsubsection{Adaptives Pooling}\label{subsubsec:adaptivepooling}
 Eine Alternative zum manuellen Einstellen der Pooling Parameter ist das adaptive Pooling. Dabei wird die Größe des Kernels und die Schrittweite automatisch\
 bestimmt. Der einzige Parameter, der notwendig ist, ist die Kantenlänge der gewünschten resultierenden Auflösung.\
 Folgende Formeln beschreiben die Berechnung der Parameter für ein quadratisches Eingangsbild mit der Kantenlänge $d_{Eingang}$ und der Ausgangskantenlänge $d_{Ausgang}$:
@@ -651,7 +651,7 @@ Das ist durchaus überraschend insofern, als dass insbesondere im Fall von $j=\{
 $4$ stattfindet. Die Auflösung wird somit deutlich reduziert gegenüber der besten manuellen Variante mit $\texttt{k}=3$, $\texttt{s}=1$ und $\texttt{p}=1$.\
 Letztere erhält die Auflösung. Auch zu Erkennen ist die Reduktion der Auflösung an einer fast verschwindend geringen Laufzeit für die Einbettung\
 und die NN-Suche. Dies ist schnelld damit erklärt, dass die Anzahl der zu prüfenden Patch Feature um den Faktor $16$ geringer ist.\
-Hingegen wird auch ein Verlust im AUROC von $\num{1,6}\%$ für ein ResNet 34 und $j=/{2/}$ beobachtet.\
+Hingegen wird auch ein Verlust im AUROC von $\num{1,6}\%$ für ein ResNet 34 und $j=\{2\}$ beobachtet.\
 Für $j=\{3\}$ und ein ResNet 34 ist hingegen eine minimale Verbesserung der AUROC um $\num{0,1}\%$ auf MVTecAD zu verzeichnen.\
 Auch in diesem Fall findet eine Reduktion der Kantenlänge um $2$ statt. Der Vorteil durch die geringere Anzahl an Patch Feature Vektoren\
 besteht also auch hier, aber der Effekt ist geringer. Weiter muss bemerkt werden, dass $j=\{3\}$ allerdings gegenüber $j=\{2\}$\
@@ -790,20 +790,6 @@ Daraus kann gefolgert werden, dass diese Kanäle auch für die Anomaliedetektion
 Deshalb werden die Kanäle mit einem höheren Informationsgehalt stärker gewichtet und Fallen dementsprechend für die Distanzberechnungen stärker ins Gewicht.\
 Eine solche Gewichtung macht insbesodere dann Sinn, wenn die Skalenniveaus im Vorhinein durch eine Normalisierung ausgeglichen wurden.\
 Es wird deshalb die Gewichung nur in Kombination mit der kanalweisen Normalisierung betrachtet.\
-% Es handelt sich aber ausdrücklich nicht um eine Entropie im informationstechnischen Sinne, sondern um eine Schätzung des Informationsgehaltes, der sich im Rahmen dieser Arbeit als nützlich erwiesen hat.\
-% Zunächst werden die $i$-ten Elemente aller Patch Feature Vektoren auf $1$ normiert. Diese skalierten Elemente werden fortan als $x_{\mathcal{N}}$ bezeichnet.\
-% Dann wird für jeden Kanal $H_{i}$ der Informationsgehalt wie folgt geschätzt:\
-% $$
-% H_{i} = \sum_{j=1}^{n}x_{\mathcal{N},i,j}log(x_{\mathcal{N},i,j})
-% $$
-% Anschließend werden die kanalweisen geschätzen Informationsgehalte $H_{i}$ auf die Anzahl an Elementen je Feature Vektor normiert. Damit bleibt die Amplitude insgesamt erhalten.\
-% Schließlich werden diese normierten Werte $H_{\mathcal{N},i}$ als Gewichtungsfaktoren für die $i$-ten Elemente der Patch Feature Vektoren verwendet:\
-% $$
-% f_{Gew}(x_{i}) = H_{\mathcal{N},i}*x_{i}
-% $$
-% Es sei angemerkt, dass der Logarithmus, der hier verwendet wird, nicht für negative Werte definiert ist. Für alle Werte $x_{i}<\epsilon$ mit $1>>\epsilon>0$ wird $x_{i}$ auf $\epsilon$ gesetzt.\
-% Das gewährleistet zusätzlich die numerische Stabilität. $\epsilon$ ist in diesem Fall auf $\num{1e-15}$ gesetzt.\\
-% Aus dem Definitionsbereich des Logarithmus folgt auch, dass 
 \subsubsection{Ergenisse der Transformationen}
 Es wurden jeweils $15$ Kombinationen getestet. Für jede der $5$ Funktionen wurde eine Variante ohne nachgelagerte Transformation, eine Variante mit kanalweiser Normalisierung ($\mathcal{N}$) und\
 eine Variante mit Normalisierung und anschließender kanalweiser Gewichtung ($\mathcal{W}$) getestet.\
@@ -814,13 +800,13 @@ Manche Erkentnisse müssen deshalb als rein empirische Ergebnisse betrachtet wer
 Da die Ergebnisse zum Teil nahe beeinander liegen, wurde die Anzahl an Memory Banks $\mathcal{M}$ von $5$ auf $10$ erhöht, um die Unsicherheit zu verringern.\
 Zusätzlich sei angemerkt, dass auf eine Betrachtung der Laufzeit in diesem Abschnitt verzichtet wird.\
 Der Grund hierfür ist, dass die Laufzeit der Transformationen im Vergleich zu den restlichen Schritten, wie der Feature Exktration und der Einbettung, vernachlässigbar ist.\
-\paragraph{Hierarchieebene $j=\{2\}$}
+\paragraph{Hierarchieebene $\mathbf{j=\{2\}}$}
 Zunächst kann mit Blick auf Abb. \ref{fig:activrn18j2} und Abb. \ref{fig:activrn34j2} festgehalten werden, dass keine großen Sprünge im AUROC zu verzeichnen sind. Es gilt aber zu beachten, dass\
 diese Transformationen kaum einen Einfluss haben auf die Laufzeit und nur geringfügig Komplexität hinzufügen.\\
 Es kann weiterhin gesehen werden, dass weder die Nomalisierung, als auch die Gewichtung mittels Entropie zuverlässig den AUROC verbessern.\
 Stets eine Verbesserung gegenüber dem Referenzwert mit ReLU ist aber zu verzeichnen, wenn die SoftMin Funktion zum Einsatz kommt.\
 Insbesondere in Kombination mit der kanalweisen Normalisierung ist eine Verbesserung zu verzeichnen.\ 
-Für beide Backbones sind eine absolute Verbesserung von etwa $\num{0,5}\%$ für MVTecAD zu verzeichnen, was durchaus signifikant ist.\
+Für beide Backbones sind eine absolute Verbesserung von etwa $\num{0,6}\%$ für MVTecAD zu verzeichnen, was durchaus signifikant ist.\
 Für den eigenen Granulatdatensatz bleibt der AUROC hingegen nahezu unverändert.\\
 Eine weitere Funktion, die in allen betrachteten Fällen eine Verbesserung gegenüber dem Referenzwert mit ReLU erzielt, ist die Sigmoid Funktion.\
 Diese profitiert nicht von nachgelagerten Transformationen.\\
@@ -835,39 +821,99 @@ Die beste Kombination ist in nach Meinung des Autors die SoftMin Funktion mit de
 Es erzielt nicht nur in allen Fällen für die hier betrachtete Hierarchieebene eine Verbesserung, sondern kann auch theoretisch\
 begründet werden dadurch, dass eine starke Regularisierung der Patch Feature Vektoren stattfindet.\
 Das geschieht in gleich zwei Dimensionen. Durch die SoftMin Funktion wird jeder Patch Feature Vektor für sich normiert und zusätzlich findet eine Normalisierung\
-über die Kanäle statt. Durch diese Regularisierung wird ein Erkennen von Anomalien potentiell erleichtert, weil sie stärker hervortreten.\\
-Es sei weiterhin angemerkt, dass die Ergebnisse für $j=\{3\}$ in hohem Maße konsistent sind, mit den hier gezeigten für $j=\{2\}$.\
-Das bestätigt zusätzlich, dass es sich um systematische Effekte handelt, die hier beobachtet werden und nicht um stochastische.\
-Auf eine Darstellung diesbezüglich wird in dieser Arbeit verzichtet, weil $j=\{3\}$ gegenüber $j=\{2\}$ keinen Vorteil bringt,\
-wie bereits in \ref{subsec:FeatureExtraktorWahlDesBackbonesPatchcore} gezeigt.\
+über die Kanäle statt. Durch diese Regularisierung wird ein Erkennen von Anomalien potentiell erleichtert, weil sie stärker hervortreten.\
 \begin{figure}[h]
     \centering
-    \input{tikz/slideactivrn18j2}
-    \caption{AUROC für verschiedene Kombinationen von Funktionen und Transformationen für ResNet 18 und Hierarchieebenen $j=\{2\}$. ($\mathcal{N}\rightarrow $ Normalisierung; $\mathcal{W}\rightarrow $ Gewichtung)}
-    \label{fig:activrn18j2}
+    \begin{subfigure}{\textwidth}
+        \centering
+        \input{tikz/slideactivrn18j2}
+        \caption{ResNet 18}
+        \label{fig:activrn18j2}
+    \end{subfigure}
+    \begin{subfigure}{\textwidth}
+        \centering
+        \input{tikz/slideactivrn34j2}
+        \caption{ResNet 34}
+        \label{fig:activrn34j2}
+    \end{subfigure}
+    \caption{AUROC für verschiedene Kombinationen von Funktionen und Transformationen für Hierarchieebenen $j=\{2\}$. ($\mathcal{N}\rightarrow $ Normalisierung; $\mathcal{W}\rightarrow $ Gewichtung)}
+    \label{fig:activrn}
+\end{figure}
+\paragraph{Hierarchieebenen $\mathbf{j=\{2,3\}}$}
+Konkateniert man zwei Hierarchieebenen, ergibt sich ein abweichendes Bild.\
+Die am besten funktionierenden Funktionen sind die ReLU kombiniert mit der kanalweisen Normalisierung und Gewichtung. Jeweils können abermals\
+etwa \num{0,5}\% absolute Verbesserung erzielt werden. Insbesodere die Sigmoid Funktion eignet sich weniger gut für die Kombination von Hierarchieebenen.\
+Insgesamt kann in den meisten Fällen auch hier eine Verbesserung gegenüber dem Standard, der ReLU Funktion erzielt werden.\\
+Die Transformationskombinationen, die auch für die Hierarchieebenen $j=\{2,3\}$ gute\
+Ergbenisse liefern, sind auch für den Fall von $j=\{3\}$ gut abschneidende Funktionen.\
+Entsprechende Ergebnisse sind in \ref{fig:activrn18j3} exemplarisch für das ResNet 18 abgebildet.\
+Die SoftMin Funktion funktioniert bereits für den Fall von $j=\{3\}$ eher schlechter, was in exemplarisch \ref{fig:activrn18j3} zu sehen ist.\
+Die Normierung auf eine Summe von $1$ findet hier über $256$ Werte statt, anstatt über $128$ Werte für $j=\{2\}$.\
+Das kann durchaus ursächlich hierfür sein.\
+Warum aber die SoftMin Funktion ohne Normierung und/oder Gewichtung für das ResNet 18 und $j=\{2,3\}$ deutlich abfällt, kann nicht erklärt werden.\
+Auch ist nicht zu beobachten, dass die ReLU Funktion, die, wie bereits in der Einleitung zu diesem Abschnitt erzläutert, den Wertebereich einschränkt, für $j=\{2,3\}$ schlechter abschneidet.\
+Das widerspricht dem Postualt, dass der gesamte Wertebereich für die Anomaliedetektion relevant ist.\
+Allerdings schneiden die Identitätsabbildung und die Leaky ReLU Funktion für $j=\{2,3\}$ kaum schlechter ab.\\
+Für den eigenen Datensatz und die Konkatenation zweier Hierarchieebenen performt aber die ReLU Funktion am besten.\
+Die Unterschiede zwischen den einzelnen Varianten sind aber hier in den allermeisten Fällen vernachlässigbar klein.\
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{\textwidth}
+        \centering
+        \input{tikz/slideactivrn18j23}
+        \caption{ResNet 18}
+        \label{fig:activrn18j23}
+    \end{subfigure}
+    \begin{subfigure}{\textwidth}
+        \centering
+        \input{tikz/slideactivrn34j23}
+        \caption{ResNet 34}
+        \label{fig:activrn34j23}
+    \end{subfigure}
+    \caption{AUROC für verschiedene Kombinationen von Funktionen und Transformationen für Hierarchieebenen $j=\{2,3\}$. ($\mathcal{N}\rightarrow $ Normalisierung; $\mathcal{W}\rightarrow $ Gewichtung)}
+    \label{fig:activrn}
 \end{figure}
 \begin{figure}[h]
     \centering
-    \input{tikz/slideactivrn34j2}
-    \caption{AUROC für verschiedene Kombinationen von Funktionen und Transformationen für ResNet 34 und Hierarchieebene $j=\{2\}$. ($\mathcal{N}\rightarrow $ Normalisierung; $\mathcal{W}\rightarrow $ Gewichtung)}
-    \label{fig:activrn34j2}
+    \input{tikz/slideactivrn18j3}
+    \caption{AUROC für verschiedene Kombinationen von Funktionen und Transformationen für ResNet 18 und Hierarchieebene $j=\{3\}$. ($\mathcal{N}\rightarrow $ Normalisierung; $\mathcal{W}\rightarrow $ Gewichtung)}
+    \label{fig:activrn18j3}
 \end{figure}
-\paragraph{Hierarchieebenen $j=\{2,3\}$}
-Konkateniert man zwei Hierarchieebenen, ergibt sich ein anderes Bild. 
-\begin{figure}[h]
-    \centering
-    \input{tikz/slideactivrn18j23}
-    \caption{AUROC für verschiedene Kombinationen von Funktionen und Transformationen für ResNet 18 und Hierarchieebenen $j=\{2,3\}$. ($\mathcal{N}\rightarrow $ Normalisierung; $\mathcal{W}\rightarrow $ Gewichtung)}
-    \label{fig:activrn18j23}
-\end{figure}
-
-\begin{figure}[h]
-    \centering
-    \input{tikz/slideactivrn34j23}
-    \caption{AUROC für verschiedene Kombinationen von Funktionen und Transformationen für ResNet 34 und Hierarchieebene $j=\{2,3\}$. ($\mathcal{N}\rightarrow $ Normalisierung; $\mathcal{W}\rightarrow $ Gewichtung)}
-    \label{fig:activrn34j23}
-\end{figure}
-
+\paragraph{Fazit}
+Auf der einen Seite konnte gezeigt werden, dass eine Steigerung von etwa \num{0,5}\% AUROC für MVTecAD durch die Verwendung von nachgelagerten Transformationen möglich ist.\
+Für $j=\{2\}$ ist die SoftMin Funktion in Kombination mit der kanalweisen Normalisierung die beste Wahl.\
+Für $j=\{2,3\}$ erzielt die ReLU Funktion in Kombination mit der kanalweisen Normalisierung und Gewichtung die besten Ergebnisse.\
+Insgesamt sind für $j=\{2\}$ leicht höhere Steigerungen zu verzeichnen, als für $j=\{2,3\}$.\
+So ist der Abstand im AUROC zwischen $j=\{2\}$ und $j=\{2,3\}$ nur noch sehr gering auf MVTecAD.\
+Der Granulatdatensatz profitiert hingegen deutlich von der Hinzunahme auf eine weitere Hierarchieebene.\\
+Auf der anderen Seite ist es problematisch, die Ergebnisse theoretisch zu begründen.\
+Es können zwar in vielen Fällen Mutmaßungen angestellt werden und die Ergebnisse sind statistisch sicher und wiederholbar.\
+Es besteht dennoch die Gefahr, dass hier bereits eine Überanpassung (Overfitting) an den Datansatz stattgefunden hat.\
+Dem kann entgegen gehalten werden, dass der Datensatz MVTecAD breite wissenschaftliche Anerkennung genießt, weil er durch seine Vielfalt und seine Größe eine Überanpassung erschwert.\
+Außerdem sind die hier erzielten Ergebnisse mit \num{0,5}\% AUROC Steigerung derart siginifikant, dass tatsächlich von einer systematischen Verbesserung ausgegangen werden kann.\
+Weiter sind die Abstände zu \num{100}\% AUROC ausreichend groß, dass eine Überanpassung\
+zusätzlich unwahrscheinlich scheint.\
+\newpage
+\subsection{Reduzieren der Patch Feature Vektoren}\label{subsec:reduzierenpatchcore}
+Nachdem im Abschnitt \ref{subsec:embedding-patchcore} bereits gesehen wurden, dass durch Redkuktion der räumlichen Auflösung der gesamte Patch Feature Vektoren eines Testbildes\
+die Laufzeit des Einbettungsprozesses, aber vor allem der NN-Suche, reduziert werden kann, wird in diesem Abschnitt untersucht, ob eine Dimensionsreduktion der Patch Feature Vektoren\
+sinnvoll sein kann. Abermals gilt es abzuwägen zwischen dem Vorteil einer geringeren Laufzeit und dem potentiellen Nachteil eines geringeren AUROC.\\
+\textit{TODO: Finalisieren Übersicht der Methoden}\\
+Für alle Methoden erfolgt zunächste eine kurze theoretische Erläuterung samt Motivation. Dann werden die Ergebnisse interpretiert und diskutiert.\
+Es wird für alle Methoden eine Reduktion um $10\%$, $25\%$, $50\%$, $75\%$ und $90\%$ betrachtet.\
+Für die Darstellung der Plots wird weitherhin eine Sortierung nach dem AUROC auf MVTecAD vorgenommen, weswegen die Reihenfolge der Methoden in den Plots nicht immer gleich ist.\
+Der Referenzwert, also die Variante ohne eine Dimensionsreduktion wird dabei nicht explizit dargestellt, sondern der AUROC für MVTecAD und den eigenen Granulatdatensatz wird jeweils als gestrichelte Linie farblich codiert dargestellt.\
+Es werden für jede Methode zwei Varianten betrachtet. Zum einen wird das ResNet 34 mit den Hierarchieebene $j=\{2\}$ betrachtet. Zum anderen wird das ResNet 18 mit den Hierarchieebenen $j=\{2,3\}$ betrachtet.\
+Die Ergebnisse für ResNet 18 und $j=\{2\}$ sowie ResNet 34 und $j=\{2,3\}$ liefern keinen Mehrwert insofern, als dass sie der verwendete Backbone in diesem Abschnitt keine siginifikant abweichenden Ergebnisse liefert.\ 
+\subsubsection{Adaptives Pooling über Patch Feature Vektoren}
+Bereits in der Beschreibung der Orignalmethode (\ref{subsec:ErzeugenDerPatchFeaturesPatchCore}) wurde erwähnt, dass es sinnvoll sein kann, ein Adaptives Pooling über die Patch Feature Vektoren\
+durchzuführen und somit die Dimesion bzw. die Länge der Vektoren zu reduzieren. Hier wurde ein ähnlicher Ansatz gewählt und nach dem eigentlichen Einbettungsprozess, der ausführlich in \ref{subsec:embedding-patchcore} beschrieben wurde,\
+ein weiteres Adaptives Average Pooling durchgeführt. Dies betrachtet jeden Vektor für sich, hat also keinen räumlichen Kontext. Dieser Vorgang ist deshalb auch kaum laufzeitkritisch.\
+Die Parameter des in diesem Fall eindimensionalen Kernels sowie die Schrittweite werden dabei von der Länge der Eingangsvektoren und der von Seiten des Nutzers zu spezifizierenden Länge der Ausgangsvektoren abgeleitet.\
+Für nähere Informationen sei auf \ref{subsubsec:adaptivepooling} verwiesen.\\
+% Die Abstände zwischen den AUROC Werten sind jedoch derart signifikant, dass davon ausgegangen werden kann,\
+% dass es sich tatsächlich um eine systematische Verbesserung handelt. Weiter sind die Abstände zu \num{100}\% AUROC ausreichend groß, dass eine Überanpassung\
+% zusätzlich unwahrscheinlich scheint.\
 % Wir betrachten dabei zwei verschiedene Kategorien von Transformationen. Beide haben gemein, dass sie auf jedes Element eines Patch Feature Vektors für sich genommen angewandt werden.\
 % Es ist
 
